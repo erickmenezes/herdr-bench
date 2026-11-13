@@ -6,7 +6,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, window, run, shared, setShared, props, openOverlay } from "herdr";
 import Viewer from "./viewer.js";
-import { menuItems, MenuView } from "./menu.js";
+import { menuItems, MenuView, CLIPBOARD } from "./menu.js";
 import { DialogView } from "./dialog.js";
 // Colour icons from the Better Icons mod when it is installed; else the plain ones below.
 import { followFileIcons, fileIcon, isLight } from "./file-icons.js";
@@ -58,7 +58,8 @@ const headerButton = (id, icon, tip, action) => {
 const PER_FOLDER = 500, TOTAL = 5000;
 const OPEN_TABS = "files-tabs.open"; // shared: "<machine>|<file>" -> tab id
 // The row menu is another copy of this mod (a popup): what it asks of the panel comes
-// through shared state, { id, at, location, kind: "root" | "open" | "refresh", path }, acted on once.
+// through shared state, { id, at, location, kind: "root" | "open" | "refresh" | "expand", path },
+// acted on once. "expand" reloads with that folder (and the ones above it) open.
 const REQUEST = "files-tabs.request";
 
 async function directory(path, on) {
@@ -214,12 +215,14 @@ export default class FilesTabs extends View {
     setShared(OPEN_TABS, open);
   }
 
-  rows(prefix, depth, out, t, light = isLight(t.background)) {
+  rows(prefix, depth, out, t, light = isLight(t.background), clip = shared(CLIPBOARD)) {
     if (out.length >= TOTAL || depth > 40) return out;
+    const cut = clip?.mode === "cut" && (clip.on ?? null) === (this.on ?? null) ? clip.path : null;
     for (const entry of this.entries.get(prefix) ?? []) {
       if (out.length >= TOTAL) break;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.marks[`${this.root}/${path}`];
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
+        .when(cut === `${this.root}/${path}`, el => el.opacity(0.5)) // cut, waiting for a paste
         .on_click((e, cx) => !entry.dir ? this.open(path) : e.click_count >= 2 ? this.showAsRoot(`${this.root}/${path}`, cx) : this.toggle(path, cx))
         .on_mouse_down("right", (_e, cx) => {
           cx.stop_propagation();
@@ -232,7 +235,7 @@ export default class FilesTabs extends View {
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
         .when(!entry.dir && Number.isFinite(entry.size), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(formatSize(entry.size))))
         .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
-      if (entry.dir && open) this.rows(path, depth + 1, out, t, light);
+      if (entry.dir && open) this.rows(path, depth + 1, out, t, light, clip);
     }
     return out;
   }
@@ -253,7 +256,15 @@ export default class FilesTabs extends View {
     this.answered = r.id;
     if (r.kind === "root") this.showAsRoot(r.path, cx);
     else if (r.kind === "open") this.openFile(r.path);
-    else if (r.kind === "refresh") this.refresh(cx); // after a rename or a move to the Trash
+    else if (r.kind === "refresh") this.refresh(cx); // after a rename, a paste or a move to the Trash
+    else if (r.kind === "expand") {
+      // A new folder or a paste inside a folder: open it so the result shows.
+      if (r.path.startsWith(`${this.root}/`)) {
+        const parts = r.path.slice(this.root.length + 1).split("/");
+        parts.forEach((_, i) => this.folders.add(parts.slice(0, i + 1).join("/")));
+      }
+      this.refresh(cx);
+    }
   }
 
   async close() { this.viewer?.close(); }
@@ -272,7 +283,14 @@ export default class FilesTabs extends View {
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(this.base ? t.foreground : t.dim).child(this.root?.split(/[\\/]/).pop() || this.root || ""))
         .when(Boolean(this.root) && this.root !== "/", el => el.child(headerButton("files-up", "mods/files-tabs/up.svg", "Up one level", cx => this.showAsRoot(parentOf(this.root), cx))))
         .when(Boolean(this.base), el => el.child(headerButton("files-back", "mods/files-tabs/home.svg", "Back to the terminal's folder", cx => this.showAsRoot(null, cx)))))
-      .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
+      .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+        // The tree's empty space: New Folder… and Paste for the panel's root (rows stop this).
+        .on_mouse_down("right", (_e, cx) => {
+          if (!this.root) return;
+          const menu = { path: this.root, relative: "", dir: true, on: this.on, location: JSON.stringify(location()), background: true };
+          openOverlay({ mod: "files-tabs", kind: "popup", width: 230, height: 32 * menuItems(menu).length + 24, props: { menu } });
+        })
+        .children(this.rows("", 0, [], t))
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total"))));
   }

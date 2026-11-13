@@ -79,10 +79,25 @@ the project's folder while a file tab is in front.
 - Right-click a row: a menu like Herdr's own (31px rows, `selected` for the
   keyboard's row, `hover`, dividers in `border`; ↑/↓, Enter, Esc). A file:
   Open, Open with Default App, Reveal in Finder; a folder: Show as Root, New
-  Terminal Here (a terminal tab in that folder); then Copy Path, Copy
-  Relative Path (to the panel's root), then Rename…, Move to Trash…. Default
-  app and Finder only for files on this Mac; the copy, rename and trash items
-  not on Windows. A copied path says so in a 2-second toast.
+  Terminal Here (a terminal tab in that folder); then Cut, Copy and, once
+  something was cut or copied, Paste (on a folder "Paste into “name”");
+  then Copy Path, Copy Relative Path (to the panel's root); then New
+  Folder…, Rename…, Move to Trash…. Right-click the tree's empty space: New
+  Folder…, Paste, Reveal in Finder, Copy Path, for the panel's root. Default
+  app and Finder only for files on this Mac; the file actions not on
+  Windows. A copied path says so in a 2-second toast.
+- Cut and Copy remember one item in the files' own clipboard (shared
+  `"files-tabs.clipboard"`: `{ path, on, mode, dir }`), not the text one; a
+  cut item shows at half opacity until it's pasted. Paste goes into the
+  folder clicked, or the file's folder. A copy never replaces anything: a
+  taken name becomes "a copy.txt", then "a copy 2.txt" (a folder keeps its
+  whole name before " copy"). A cut is refused over an existing name,
+  changes nothing where it already is, and empties the clipboard once
+  pasted. A folder can't go into itself or below itself. Between two
+  machines (or this computer and one) Paste says it isn't supported yet.
+  After a paste or a new folder inside a folder, that folder opens.
+- New Folder… opens the Rename dialog's twin: "New folder", "untitled
+  folder" selected, Create; a name with "/" or one that exists is refused.
 - Rename… opens a dialog like Herdr's prompt: the name with its stem
   selected (all of it for a folder or a dotfile), Enter or Rename, Esc or
   Cancel. A name with "/" or one that already exists there is refused in the
@@ -176,14 +191,20 @@ the project's folder while a file tab is in front.
   `{ dialog }` as a dialog (440px wide). Each copy has its own module state,
   so what the panel must do (open a file in a tab, Show as Root, reload
   after a rename or a trash) goes to it as shared `"files-tabs.request"`:
-  `{ id, at, location, kind: "open" | "root" | "refresh", path }`; the panel
-  acts once per id, only for its own terminal location and within 5 s.
+  `{ id, at, location, kind: "open" | "root" | "refresh" | "expand", path }`
+  (expand: reload with that folder and its parents open); the panel acts
+  once per id, only for its own terminal location and within 5 s.
   Commands: `open` / `open -R`; `printf %s "$1" | { pbcopy || wl-copy ||
   xclip -selection clipboard || xsel -b; }`; rename `cd "$1"; [ -e "$3" ] ||
   [ -L "$3" ] && exit 3; mv -n -- "$2" "$3"` on the file's machine; trash
   `/usr/bin/trash "$1"` (macOS 15+), else Finder `delete` through
   `osascript` with the path as an argument; elsewhere `gio trash --` or
-  `trash-put --`, else exit 4 ("no Trash"). Never `rm`.
+  `trash-put --`, else exit 4 ("no Trash"). Never `rm`. New folder: `cd "$1";
+  [ -e "$2" ] || [ -L "$2" ] && exit 3; mkdir -- "$2"`. Paste, on the
+  machine of both: refuse a folder into itself (`case "$dir/" in "$src"/*`,
+  exit 5) and a missing source (exit 4); a cut is `mv -n` unless the name is
+  taken (exit 3); a copy finds a free "stem copy[ n].ext" and runs
+  `cp -R -p`.
 - Show as Root: a module-level map from the terminal location (the JSON of
   `{cwd, on, space}`) to a pinned folder; the panel's folder and its cache
   key come from that pinned folder when there is one. Double-click comes

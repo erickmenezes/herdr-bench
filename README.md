@@ -7,8 +7,9 @@ GIF, WebP, SVG…) show as pictures. Clicking the same file again goes back to
 its tab. The panel shows each file's size, and a double-click on a folder
 shows it as the root, with buttons for up one level and back to the
 terminal's folder. Right-click a row for Open, Show as Root, New Terminal
-Here, Open with Default App, Reveal in Finder, Copy Path, Copy Relative
-Path, Rename… and Move to Trash… (never a plain delete). Files and folders get colour icons (VS Code's
+Here, Open with Default App, Reveal in Finder, Cut, Copy, Paste, Copy Path,
+Copy Relative Path, New Folder…, Rename… and Move to Trash… (never a plain
+delete); right-click the empty space for New Folder… and Paste at the top. Files and folders get colour icons (VS Code's
 Material Icon Theme, through the bundled Better Icons mod). Above Agents, a
 Limits panel shows how much of Claude's session (5-hour) and weekly limits
 you've used, per account. And a note button after Files in the tab bar (or
@@ -48,7 +49,8 @@ panel says so and stays empty.
 
 What it touches: the Files panel runs `sh` (to list folders), `stat` and
 `git status`, reads the files you click, and, only from its right-click
-menu, `open`, `pbcopy` (or `wl-copy`/`xclip`/`xsel`), `mv -n` to rename, and
+menu, `open`, `pbcopy` (or `wl-copy`/`xclip`/`xsel`), `mkdir`, `cp -R -p` to
+paste a copy, `mv -n` to rename or paste a cut, and
 `/usr/bin/trash` (else Finder via `osascript`; `gio trash` or `trash-put` on
 Linux and SSH machines) to move to the Trash. The Limits panel runs `sh` to read
 `~/.cache/herdr-claude-limits/`, which `save-limits.sh` writes. Those
