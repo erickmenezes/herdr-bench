@@ -134,14 +134,20 @@ the project's folder while a file tab is in front.
   `file-icons.js`, `mod.json` (`"place": "none"`: it shows only where the
   layout puts it), and four icons (`chevron-down.svg`, `chevron-right.svg`,
   `file.svg`, `folder.svg`).
-- Colour icons, optional: `file-icons.js` is a byte-for-byte copy of the one
-  in [Better Icons](https://github.com/munza/herdr-mods/tree/main/better-icons)
-  (Material Icon Theme's icons, read by path from `mods/better-icons/`). The
+- One bundled mod folder, `mods/better-icons/`: [Better Icons](https://github.com/munza/herdr-mods/tree/main/better-icons)
+  as published (commit `ffbdb6d`, Material Icon Theme 5.40.0: `icons.json`,
+  1,184 SVGs in `icons/`, `file-icons.js`, `main.js`, `mod.json` with
+  `place: none`, `mod.schema.json`, `LICENSE-material-icon-theme.txt`).
+  Don't edit it; to update, copy a newer release over it.
+- Colour icons: `files-tabs/file-icons.js` is a byte-for-byte copy of Better
+  Icons' own (a mod can't import from another's folder), which reads the
+  icons by path from `mods/better-icons/`. The
   panel and each file tab call `followFileIcons(this, cx)` once, then draw
   `fileIcon(this.fileIcons, <full path>, { dir, open, light: isLight(theme().background) })`
   with `image(...).w(14).h(14)` (13 in a tab's title row); `image`, not
   `svg`, so the icon keeps its colours. With no Better Icons installed it
-  returns null and the plain `folder.svg` / `file.svg` show, tinted `muted`.
+  returns null and the plain `folder.svg` / `file.svg` show, tinted `muted`,
+  so the panel still works if someone leaves Better Icons out.
   Installing or updating Better Icons shows within 10 seconds, no restart.
 - `main.js` default-exports one `View` with two roles, chosen by `props()`:
   - **No props → the panel.** A lazy tree of `location().cwd`. Folders are
@@ -170,6 +176,10 @@ the project's folder while a file tab is in front.
   removed); the panel's location falls back for mod panes; `viewer.js` added.
 
 ## Watch out
+
+- Better Icons' folder must be named `better-icons`: every mod that uses it
+  reads `mods/better-icons/icons/<name>.svg`. If one is already installed,
+  keep it rather than install this copy under another name.
 
 - A block with no `size` in a row takes all of it: the `tabs` block needs
   `size: {weight: 1}`, or the button block next to it gets no width.
