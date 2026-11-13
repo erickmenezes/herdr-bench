@@ -5,8 +5,7 @@
 // an update while the tab stays open. There are no files.
 // Opened as an overlay (`mod.open:scratchpad`, e.g. bound to cmd-shift-n), it
 // opens a new scratchpad tab in the shown space and closes itself.
-// In a layout block (no props), it is a button beside the tab bar that does the same.
-import { View, div, svg } from "gpui-kit";
+import { View, div } from "gpui-kit";
 import { v_flex, Editor, EditorState } from "gpui-base";
 import { props, theme, settings, spaces, run, closeOverlay } from "herdr";
 
@@ -22,7 +21,7 @@ export default class Scratchpad extends View {
       return;
     }
     this.id = p.id ?? null;
-    if (!this.id) { this.button = true; return; }
+    if (!this.id) return;
     this.key = `note:${this.id}`;
     this.state = EditorState.new({
       value: localStorage.getItem(this.key) ?? "",
@@ -42,13 +41,6 @@ export default class Scratchpad extends View {
 
   render(_cx) {
     const t = theme();
-    // Matches the tab bar beside it: chrome background, bottom border, 26px dim button.
-    if (this.button) return div().id("root").size_full().flex().items_center().pr(10).bg(t.chrome).border_b(1).border_color(t.border)
-      .child(div().id("new-scratchpad").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim)
-        .hover(s => s.bg(t.hover).text_color(t.foreground))
-        .tooltip("New scratchpad (⌘⇧N)")
-        .on_click(() => openNew())
-        .child(svg("mods/scratchpad/note.svg").size(15)));
     return v_flex().id("root").size_full().min_h(0).overflow_hidden().bg(t.background).text_color(t.foreground)
       .child(props()?.overlay ? div() : this.state
         ? v_flex().flex_1().min_h(0).px(6).pt(6).child(Editor.new(this.state).flex_1().min_h(0))

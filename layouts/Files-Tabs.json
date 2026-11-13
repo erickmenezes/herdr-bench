@@ -121,13 +121,13 @@
               }
             },
             {
-              "id": "scratchpad-button",
+              "id": "tab-bar-extras",
               "type": "block",
               "size": {
                 "px": 36
               },
               "content": {
-                "mod": "scratchpad"
+                "mod": "tab-bar-extras"
               }
             }
           ]
