@@ -14,11 +14,17 @@ the project's folder while a file tab is in front.
 
 - **The panel** (in the right-hand side panel, where Herdr's Files is): looks
   like Herdr's Files. A 42px header with "Files" (semibold) on the left and
-  the folder's name on the right (12px, `dim`). Below, a scrolling tree with
+  the folder's name on the right (12px, `dim`; `foreground` while a folder
+  is shown as root), then a 24px "Up one level" button (14px up arrow,
+  `dim`, `hover` background) unless the folder is `/`, and, while a folder
+  is shown as root, a "Back to the terminal's folder" button (a folder with
+  a check). Below, a scrolling tree with
   6px padding: rows 28px high, indented `8 + 18 × depth` px, rounded 7px,
   `hover` background on hover. Each row: a 12px chevron for folders (right
   when closed, down when open; files get a 12px gap instead), a 14px folder
-  or file icon in `muted`, the name (truncated), and a git mark on the right
+  or file icon in `muted`, the name (truncated), for a file its size (11px,
+  `dim`: "79 B", "4.2 KB", "18 KB", "3.1 MB", in 1024s, one decimal below
+  10), and a git mark on the right
   for changed files (11px): `A` in `ansi2` (added or untracked), `D` or `U`
   in `ansi1` (deleted, conflicted), `M` in `blocked` (modified). Folders come
   first, then files, each sorted by name; `.git` is hidden. The panel card
@@ -26,7 +32,7 @@ the project's folder while a file tab is in front.
 - **A file tab**: a tab named after the file (`README.md`), with one mod pane
   filling it. At the top, a 30px bar with a 13px file icon, the file's path
   (12px, `dim`, with your home folder shown as `~`; `machine:` in front for a
-  file on another machine) and, for Markdown files only, a small 11px
+  file on another machine) and, for Markdown and SVG files, a small 11px
   "Source" / "Preview" button on the right. Under it, the file:
   - Code and text: a read-only editor with line numbers, folding and syntax
     colors in your theme (keywords `ansi5`, strings `ansi2`, comments `dim`,
@@ -35,6 +41,10 @@ the project's folder while a file tab is in front.
   - Markdown (`.md`, `.markdown`, `.mdx`): rendered, selectable, with 20px
     side and 14px top/bottom padding. A YAML front matter block (`---` …
     `---` at the top) is hidden in the rendered view and shown in Source.
+  - Pictures (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.ico`,
+    `.svg`): centered with 16px padding, at their own size or the tab's,
+    whichever is smaller. A file on another machine says "Picture preview
+    works for files on this computer only".
   - Messages instead of content: "Loading file…", "Binary file · no text
     preview", "This file is no longer available", or "Cannot open this file
     (binary, larger than 1 MiB, or unreadable)".
@@ -51,16 +61,35 @@ the project's folder while a file tab is in front.
   "Personal"), and its plan in a small pill (10px, medium, `muted` on
   `raised`, 4px corners), such as "Pro", "Max 5x" or "Team Max 5x". With no saved limits: "No limits yet. They show up once a
   Claude session's status line runs save-limits.sh."
-- **The Scratchpad button**: at the right end of the tab bar, after Files, a
-  26px button with a 15px note icon (`dim`, `hover` background and
-  `foreground` on hover, 6px corners) on the tab bar's `chrome` background
-  and bottom border; its tooltip is "New scratchpad (⌘⇧N)".
+- **After the tab bar's Files button**, on the tab bar's `chrome`
+  background and bottom border: a 26px note button with a 15px note icon
+  (`dim`, `hover` background and `foreground` on hover, 6px corners),
+  tooltip "New scratchpad (⌘⇧N)".
 - **A scratchpad tab**: named "Scratchpad", one mod pane with a plain-text
   editor (13px, your terminal font, no line numbers, soft wrap, 6px padding)
   on `background`.
 
 ## How it behaves
 
+- Double-click a folder: it becomes the panel's root. Up one level shows
+  the parent as root (also above the terminal's folder), Back to the
+  terminal's folder ends it. The root is kept per terminal location (space,
+  machine, folder): `cd` elsewhere and the panel follows the terminal again;
+  come back and the pinned root is there.
+- Right-click a row: a menu like Herdr's own (31px rows, `selected` for the
+  keyboard's row, `hover`, dividers in `border`; ↑/↓, Enter, Esc). A file:
+  Open, Open with Default App, Reveal in Finder; a folder: Show as Root, New
+  Terminal Here (a terminal tab in that folder); then Copy Path, Copy
+  Relative Path (to the panel's root), then Rename…, Move to Trash…. Default
+  app and Finder only for files on this Mac; the copy, rename and trash items
+  not on Windows. A copied path says so in a 2-second toast.
+- Rename… opens a dialog like Herdr's prompt: the name with its stem
+  selected (all of it for a folder or a dotfile), Enter or Rename, Esc or
+  Cancel. A name with "/" or one that already exists there is refused in the
+  dialog; nothing is overwritten.
+- Move to Trash… opens a dialog like Herdr's confirm: "Move “name” to the
+  Trash?", with the path, Enter or Move to Trash. It only ever moves to a
+  Trash; with none on that machine it says so and deletes nothing.
 - Click a folder: it opens or closes in place. Click a file: a new tab opens
   in the shown space, named after the file, and becomes the shown tab.
 - Click a file that already has a tab: that tab is shown again; no second tab.
@@ -93,13 +122,16 @@ the project's folder while a file tab is in front.
   Keep that id, because the tab bar's Files button selects it. The root also
   has `"preview": "layouts/Files-Tabs.svg"`, the picture Settings shows.
   It also adds a block `limits` (`size: {px: 160}`, `min: 80`, mod
-  `claude-limits`) in `sidebar-lists` between `spaces` and `agents`. And the
+  `claude-limits`) in `sidebar-lists` between `spaces` and `agents`. The
   `tabs` block (still Herdr's own `tabs` mod) goes into a row `tab-bar`
   (`size: {px: 42}`, `resizable: false`) with `size: {weight: 1}`, followed
-  by a block `scratchpad-button` (`size: {px: 36}`, mod `scratchpad`).
-- One mod folder, `mods/scratchpad/`: `main.js`, `mod.json`
-  (`"place": "none"`, `"overlay": {width: 1, height: 1}`) and `note.svg`.
-  `main.js` default-exports a `View` with three roles, chosen by `props()`:
+  by a block `tab-bar-extras` (`size: {px: 36}`, mod `tab-bar-extras`).
+- One mod folder, `mods/tab-bar-extras/`: `main.js`, `mod.json`
+  (`"place": "none"`) and `note.svg`. The note runs
+  `mod.open {name: "scratchpad"}`. More buttons beside the tab bar go here.
+- One mod folder, `mods/scratchpad/`: `main.js` and `mod.json`
+  (`"place": "none"`, `"overlay": {width: 1, height: 1}`).
+  `main.js` default-exports a `View` with two roles, chosen by `props()`:
   - **`{ id }` → a note tab**: `EditorState.new({ value, font_family,
     font_size: 13, line_numbers: false, folding: false, soft_wrap: true })`,
     with the text in `localStorage` under `note:<id>` on every `change`.
@@ -108,8 +140,6 @@ the project's folder while a file tab is in front.
   - **`{ overlay }` → `mod.open:scratchpad`**: closes the overlay and opens a
     tab, `run("tab.new", { name: "Scratchpad", space: <shown space id>,
     mod: "scratchpad", props: { id: <new random id> } })`.
-  - **No props → the button** in the layout's block, which opens a tab the
-    same way.
 - `keys.json`: `{"global": {"cmd-shift-n": "mod.open:scratchpad"}}`.
 - One mod folder, `mods/claude-limits/`: `main.js`, `mod.json`
   (`"place": "none"`, `"title": "Limits"`) and `save-limits.sh`.
@@ -130,10 +160,34 @@ the project's folder while a file tab is in front.
   - `main.js` default-exports a `View`: it reads every snapshot with one
     `exec("sh", ["-c", 'for f in "$1"/*.json; do [ -f "$f" ] && cat "$f" && echo; done', "limits", dir])`,
     sorted by account; reloads on `watchFolder(dir)` and `cx.timer.every(30000)`.
-- One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`,
-  `file-icons.js`, `mod.json` (`"place": "none"`: it shows only where the
-  layout puts it), and four icons (`chevron-down.svg`, `chevron-right.svg`,
-  `file.svg`, `folder.svg`).
+- One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`, `menu.js`,
+  `dialog.js`, `file-icons.js`, `mod.json` (`"place": "none"`: it shows only where the
+  layout puts it), and six icons (`chevron-down.svg`, `chevron-right.svg`,
+  `file.svg`, `folder.svg`, `up.svg`, `home.svg`).
+- Sizes come from the same `sh` listing as the tree, with no extra call: it
+  prints each entry as `kind\0name\0` (at most 500), then the pair `z\0z\0`,
+  then one `stat -L` for all the folder's files, `stat -c "%s %n"` where GNU
+  stat answers `stat -c %s /`, else BSD's `stat -f "%z %N"`. The fields are
+  read in pairs, since a name can be "z" and a kind (d or f) can't; each
+  `<bytes> <path>` line gives the size for that name. Windows folders have no
+  sizes.
+- The row menu (`menu.js`) and the dialogs (`dialog.js`) are more copies of
+  `files-tabs`, chosen by `props()`: `{ menu }` as a popup (230px wide),
+  `{ dialog }` as a dialog (440px wide). Each copy has its own module state,
+  so what the panel must do (open a file in a tab, Show as Root, reload
+  after a rename or a trash) goes to it as shared `"files-tabs.request"`:
+  `{ id, at, location, kind: "open" | "root" | "refresh", path }`; the panel
+  acts once per id, only for its own terminal location and within 5 s.
+  Commands: `open` / `open -R`; `printf %s "$1" | { pbcopy || wl-copy ||
+  xclip -selection clipboard || xsel -b; }`; rename `cd "$1"; [ -e "$3" ] ||
+  [ -L "$3" ] && exit 3; mv -n -- "$2" "$3"` on the file's machine; trash
+  `/usr/bin/trash "$1"` (macOS 15+), else Finder `delete` through
+  `osascript` with the path as an argument; elsewhere `gio trash --` or
+  `trash-put --`, else exit 4 ("no Trash"). Never `rm`.
+- Show as Root: a module-level map from the terminal location (the JSON of
+  `{cwd, on, space}`) to a pinned folder; the panel's folder and its cache
+  key come from that pinned folder when there is one. Double-click comes
+  from `on_click`'s `click_count >= 2`.
 - One bundled mod folder, `mods/better-icons/`: [Better Icons](https://github.com/munza/herdr-mods/tree/main/better-icons)
   as published (commit `ffbdb6d`, Material Icon Theme 5.40.0: `icons.json`,
   1,184 SVGs in `icons/`, `file-icons.js`, `main.js`, `mod.json` with
@@ -188,6 +242,20 @@ the project's folder while a file tab is in front.
   A block beside the tab bar keeps both stock.
 - On Linux and Windows, Herdr's tab bar draws the window buttons at its right
   end, so the note button sits after them there.
+- A side panel of your own (another child of `panel-body`, opened by a
+  button in `tab-bar-extras`) closes on every space switch unless its id is
+  in shared `workspace.panels`: Herdr's tab bar remembers the panel per
+  space but restores only the ids listed there (Files and Changes unless the
+  person changed it). That list is shared by every layout.
+- Herdr's `image()` only loads files inside its own folder, and doesn't
+  scale a picture up or fit it to a box (`size_full()` stretches and crops;
+  sizing an SVG from its viewBox and the box measured with `on_size_change`
+  showed no change in a first try, cause not found yet). So the viewer copies the picture to
+  `~/.config/herdr-app/data/files-tabs/images/<random>.<ext>`, shows that
+  copy at its own size at most, makes a new copy on every change (a new name,
+  so no cached old picture), deletes it in `close()`, and at its first start
+  deletes copies older than a day (closing a whole space doesn't call
+  `close()`).
 
 - Claude Code gives the session and weekly limits only to its status line,
   so the panel can't know them unless a status line saves them. Asking
@@ -222,9 +290,8 @@ the project's folder while a file tab is in front.
 
 ## Done when
 
-- `herdr-app check` passes for `mods/files-tabs`, `mods/claude-limits` and
-  `mods/scratchpad`.
-- The note button shows after Files at the end of the tab bar; clicking it,
+- `herdr-app check` passes for every folder in `mods/`.
+- The note button shows after Files at the end of the tab bar. Clicking it,
   or `cmd-shift-n`, opens an empty Scratchpad tab, and its text is still
   there after restarting Herdr.
 - With the status line line added, `~/.cache/herdr-claude-limits/` has one

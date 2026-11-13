@@ -4,8 +4,10 @@
 // Based on the Files mod shipped with Herdr (Apache-2.0); changes listed in RECIPE.md.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, theme, window, run, shared, setShared, props } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, theme, window, run, shared, setShared, props, openOverlay } from "herdr";
 import Viewer from "./viewer.js";
+import { menuItems, MenuView } from "./menu.js";
+import { DialogView } from "./dialog.js";
 // Colour icons from the Better Icons mod when it is installed; else the plain ones below.
 import { followFileIcons, fileIcon, isLight } from "./file-icons.js";
 
@@ -28,9 +30,36 @@ function location() {
   if (space && (pane?.cwd || f?.cwd)) lastBySpace.set(space.id, here);
   return here;
 }
-const key = () => JSON.stringify(location());
+// Show as Root: a folder pinned in place of the terminal's, per terminal location
+// (space, machine, folder), until Back to the terminal's folder.
+const pinned = new Map();
+function effective() {
+  const here = location(), root = pinned.get(JSON.stringify(here));
+  return root ? { ...here, cwd: root, base: here.cwd } : here;
+}
+const key = () => JSON.stringify(effective());
+const parentOf = (path) => path.replace(/[\\/][^\\/]*$/, "") || "/";
+
+// 1023 B, 4.2 KB, 18 KB, 3.1 MB: one decimal below 10.
+function formatSize(n) {
+  if (!Number.isFinite(n)) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return i === 0 ? `${n} B` : `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+}
+
+const headerButton = (id, icon, tip, action) => {
+  const t = theme();
+  return div().id(id).size(24).flex_none().flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim)
+    .hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click((_e, cx) => action(cx))
+    .child(svg(icon).size(14));
+};
 const PER_FOLDER = 500, TOTAL = 5000;
 const OPEN_TABS = "files-tabs.open"; // shared: "<machine>|<file>" -> tab id
+// The row menu is another copy of this mod (a popup): what it asks of the panel comes
+// through shared state, { id, at, location, kind: "root" | "open" | "refresh", path }, acted on once.
+const REQUEST = "files-tabs.request";
 
 async function directory(path, on) {
   const windowsDirectory = async () => {
@@ -44,7 +73,9 @@ async function directory(path, on) {
     return Array.isArray(result) ? result : [result];
   };
   if (!on && window()?.platform === "windows") return windowsDirectory();
-  const script = 'n=0; for p in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$p" ] || [ -L "$p" ] || continue; name=${p##*/}; [ "$name" = .git ] && continue; if [ -d "$p" ]; then kind=d; else kind=f; fi; printf "%s\\0%s\\0" "$kind" "$name"; n=$((n+1)); [ "$n" -gt 500 ] && break; done; test -d "$1"';
+  // Each entry as kind\0name\0; then the pair z\0z\0 and one stat call for every file's size, as
+  // "<bytes> <path>" lines (GNU stat on Linux, BSD stat on macOS).
+  const script = 'd=$1; shift; n=0; for p in "$d"/* "$d"/.[!.]* "$d"/..?*; do [ -e "$p" ] || [ -L "$p" ] || continue; name=${p##*/}; [ "$name" = .git ] && continue; if [ -d "$p" ]; then kind=d; else kind=f; set -- "$@" "$p"; fi; printf "%s\\0%s\\0" "$kind" "$name"; n=$((n+1)); [ "$n" -gt 500 ] && break; done; printf "z\\0z\\0"; if [ "$#" -gt 0 ]; then if stat -c %s / >/dev/null 2>&1; then stat -L -c "%s %n" -- "$@" 2>/dev/null; else stat -L -f "%z %N" -- "$@" 2>/dev/null; fi; fi; test -d "$d"';
   let r;
   try { r = await exec("sh", ["-c", script, "files", path], { on }); }
   catch (e) {
@@ -52,15 +83,23 @@ async function directory(path, on) {
     throw e;
   }
   if (r.code !== 0) throw new Error(r.stderr || "Cannot list this folder");
-  const fields = r.stdout.split("\0"), out = [];
-  for (let i = 0; i + 1 < fields.length; i += 2) out.push({ name: fields[i + 1], dir: fields[i] === "d" });
-  return out;
+  // Read in pairs: a name can be "z", a kind (d or f) never is.
+  const fields = r.stdout.split("\0"), list = [], sizes = new Map();
+  let i = 0;
+  for (; i + 1 < fields.length && fields[i] !== "z"; i += 2) list.push({ name: fields[i + 1], dir: fields[i] === "d" });
+  for (const line of (fields[i] === "z" ? fields.slice(i + 2).join("") : "").split("\n")) {
+    const space = line.indexOf(" ");
+    if (space > 0) sizes.set(line.slice(space + 1).split("/").pop(), Number(line.slice(0, space)));
+  }
+  return list.map(e => e.dir ? e : { ...e, size: sizes.get(e.name) });
 }
 
 export default class FilesTabs extends View {
   init(_props, cx) {
     const p = props();
     if (p?.file) { this.viewer = new Viewer(p, cx); return; }
+    if (p?.menu) { this.menu = new MenuView(p, cx); return; }
+    if (p?.dialog) { this.dialog = new DialogView(p, cx); return; }
     followFileIcons(this, cx);
     this.saved = new Map();
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
@@ -92,11 +131,11 @@ export default class FilesTabs extends View {
   }
 
   refresh(cx) {
-    const { cwd, on } = location(), next = key();
+    const { cwd, on, base } = effective(), next = key();
     if (next !== this.context?.key) {
       if (this.context) this.saved.set(this.context.key, { folders: this.folders });
       const saved = this.saved.get(next);
-      this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
+      this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.base = base ?? null; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.watched = null; this.error = null; this.limited = false;
       this.loading = false;
     }
@@ -148,14 +187,16 @@ export default class FilesTabs extends View {
     cx.notify();
   }
 
-  open(path) {
+  open(path) { this.openFile(`${this.root}/${path}`); }
+
+  openFile(file) {
     const { space } = location();
     if (!space) return;
-    const file = `${this.root}/${path}`, id = `${this.on ?? ""}|${file}`;
+    const id = `${this.on ?? ""}|${file}`;
     const tabs = spaces().find(s => s.id === space)?.tabs ?? [];
     const known = (shared(OPEN_TABS) ?? {})[id];
     if (known && tabs.some(t => t.id === known)) { run("tab.select", { id: known }); return; }
-    const name = path.split("/").pop();
+    const name = file.split("/").pop();
     this.opening = { id, space, name, before: new Set(tabs.map(t => t.id)) };
     run("tab.new", { name, space, mod: "files-tabs", props: { file, on: this.on } });
   }
@@ -179,28 +220,58 @@ export default class FilesTabs extends View {
       if (out.length >= TOTAL) break;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.marks[`${this.root}/${path}`];
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
-        .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : this.open(path))
+        .on_click((e, cx) => !entry.dir ? this.open(path) : e.click_count >= 2 ? this.showAsRoot(`${this.root}/${path}`, cx) : this.toggle(path, cx))
+        .on_mouse_down("right", (_e, cx) => {
+          cx.stop_propagation();
+          const menu = { path: `${this.root}/${path}`, relative: path, dir: entry.dir, on: this.on, location: JSON.stringify(location()) };
+          openOverlay({ mod: "files-tabs", kind: "popup", width: 230, height: 32 * menuItems(menu).length + 24, props: { menu } });
+        })
         .child(entry.dir ? svg(`mods/files-tabs/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child((icon => icon ? image(icon).w(14).h(14).flex_none() : svg(`mods/files-tabs/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))(
           fileIcon(this.fileIcons, `${this.root}/${path}`, { dir: entry.dir, open, light })))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
+        .when(!entry.dir && Number.isFinite(entry.size), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(formatSize(entry.size))))
         .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
       if (entry.dir && open) this.rows(path, depth + 1, out, t, light);
     }
     return out;
   }
 
+  // Pins a folder in place of the terminal's; null goes back to the terminal's folder.
+  showAsRoot(folder, cx) {
+    const here = JSON.stringify(location());
+    if (!folder || folder === location().cwd) pinned.delete(here);
+    else pinned.set(here, folder);
+    this.refresh(cx);
+    cx.notify();
+  }
+
+  // A request from the row menu, for this terminal location, made in the last few seconds.
+  answer(cx) {
+    const r = shared(REQUEST);
+    if (!r || r.id === this.answered || Date.now() - (r.at ?? 0) > 5000 || r.location !== JSON.stringify(location())) return;
+    this.answered = r.id;
+    if (r.kind === "root") this.showAsRoot(r.path, cx);
+    else if (r.kind === "open") this.openFile(r.path);
+    else if (r.kind === "refresh") this.refresh(cx); // after a rename or a move to the Trash
+  }
+
   async close() { this.viewer?.close(); }
 
   render(cx) {
     if (this.viewer) return this.viewer.render(cx);
+    if (this.menu) return this.menu.render(cx);
+    if (this.dialog) return this.dialog.render(cx);
     if (key() !== this.context?.key) this.refresh(cx);
     this.remember();
+    this.answer(cx);
     const t = theme();
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child("Files"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? "")))
+        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(this.base ? t.foreground : t.dim).child(this.root?.split(/[\\/]/).pop() || this.root || ""))
+        .when(Boolean(this.root) && this.root !== "/", el => el.child(headerButton("files-up", "mods/files-tabs/up.svg", "Up one level", cx => this.showAsRoot(parentOf(this.root), cx))))
+        .when(Boolean(this.base), el => el.child(headerButton("files-back", "mods/files-tabs/home.svg", "Back to the terminal's folder", cx => this.showAsRoot(null, cx)))))
       .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total"))));
