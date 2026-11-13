@@ -38,6 +38,17 @@ the project's folder while a file tab is in front.
   - Messages instead of content: "Loading file…", "Binary file · no text
     preview", "This file is no longer available", or "Cannot open this file
     (binary, larger than 1 MiB, or unreadable)".
+- **The Limits panel** (in the left sidebar, between Spaces and Agents, 160px
+  high, `chrome` background, 1px `border` on top): a header "Limits" styled
+  like Agents' (11.5px, medium, `dim`, 16px side padding, 41px high). Per
+  account, two meters, "Session" (the 5-hour window) and "Weekly": the name
+  in `muted`, the percentage (medium; `foreground` under 50%, else the bar's
+  color) and "resets in 1h 12m" on the right (11px, `dim`); under them a 4px
+  bar on `raised`, filled to the percentage in `accent` under 50%, `ansi3`
+  under 80%, `blocked` from 80%. With more than one account, each gets its
+  name above its meters (`~/.claude` → "Claude", `~/.claude-personal` →
+  "Personal"). With no saved limits: "No limits yet. They show up once a
+  Claude session's status line runs save-limits.sh."
 
 ## How it behaves
 
@@ -55,6 +66,10 @@ the project's folder while a file tab is in front.
   watched; files on another machine are re-read every 10 s). "Source" /
   "Preview" switches a Markdown tab between raw text and rendered text.
 - Close a file tab like any tab. Agent statuses play no part in this mod.
+- Limits update within a second of a Claude session's status line running
+  (the panel watches the folder), and every 30 s the countdowns move on. A
+  window whose reset time has passed shows 0% and "reset". A snapshot older
+  than 30 minutes says "as of 2h 5m ago" above its meters.
 
 ## Built from
 
@@ -64,6 +79,21 @@ the project's folder while a file tab is in front.
   `panel-body`) has `content.mod` set to `files-tabs` instead of `files`.
   Keep that id, because the tab bar's Files button selects it. The root also
   has `"preview": "layouts/Files-Tabs.svg"`, the picture Settings shows.
+  It also adds a block `limits` (`size: {px: 160}`, `min: 80`, mod
+  `claude-limits`) in `sidebar-lists` between `spaces` and `agents`.
+- One mod folder, `mods/claude-limits/`: `main.js`, `mod.json`
+  (`"place": "none"`, `"title": "Limits"`) and `save-limits.sh`.
+  - `save-limits.sh` reads the status line's JSON on stdin and, with `jq`,
+    writes `{account, updated, rate_limits}` on one line to
+    `~/.cache/herdr-claude-limits/<account>.json`, where the account is the
+    basename of `CLAUDE_CONFIG_DIR` (default `~/.claude`) without its dot. It
+    rewrites only when `rate_limits` changed or the file is a minute old,
+    through a temp file and `mv`. `rate_limits` is what Claude Code passes:
+    `five_hour` and `seven_day`, each `{used_percentage, resets_at}` (Unix
+    seconds).
+  - `main.js` default-exports a `View`: it reads every snapshot with one
+    `exec("sh", ["-c", 'for f in "$1"/*.json; do [ -f "$f" ] && cat "$f" && echo; done', "limits", dir])`,
+    sorted by account; reloads on `watchFolder(dir)` and `cx.timer.every(30000)`.
 - One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`, `mod.json`
   (`"place": "none"`: it shows only where the layout puts it), and four
   icons (`chevron-down.svg`, `chevron-right.svg`, `file.svg`, `folder.svg`).
@@ -95,6 +125,14 @@ the project's folder while a file tab is in front.
 
 ## Watch out
 
+- Claude Code gives the session and weekly limits only to its status line,
+  so the panel can't know them unless a status line saves them. Asking
+  Anthropic's usage endpoint would mean reading the Claude login from the
+  Keychain and going online; this layout doesn't.
+- Limits are only as new as the last status line run. With no Claude session
+  open, the numbers stay where they were (and say how old they are after 30
+  minutes); a passed reset time still shows as 0%.
+
 - Settings → Look labels a layout you add with its file name, exactly as
   written, and names may only use letters, digits, `-` and `_`. That's why
   the file is `Files-Tabs.json`: "Files Tabs" with a space isn't allowed.
@@ -120,7 +158,11 @@ the project's folder while a file tab is in front.
 
 ## Done when
 
-- `herdr-app check ~/.config/herdr-app/mods/files-tabs` passes.
+- `herdr-app check ~/.config/herdr-app/mods/files-tabs` and
+  `herdr-app check ~/.config/herdr-app/mods/claude-limits` pass.
+- With the status line line added, `~/.cache/herdr-claude-limits/` has one
+  file per account, and the Limits panel shows the same session and weekly
+  percentages as Claude Code's own `/usage`.
 - Settings → Look shows "Files-Tabs" with its preview; with it chosen
   (or after `layout.switch {"name":"Files-Tabs"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.

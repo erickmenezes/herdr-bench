@@ -58,6 +58,17 @@
               }
             },
             {
+              "id": "limits",
+              "type": "block",
+              "size": {
+                "px": 160
+              },
+              "min": 80,
+              "content": {
+                "mod": "claude-limits"
+              }
+            },
+            {
               "id": "agents",
               "type": "block",
               "size": {
