@@ -58,12 +58,12 @@ the project's folder while a file tab is in front.
 
 ## Built from
 
-- One layout file, `layouts/main-files-tabs.json`: a clone of Herdr's
+- One layout file, `layouts/Files-Tabs.json`: a clone of Herdr's
   `main` layout (`cloned_from: {name: "main", version: "0.1.13"}`) with
   one change: the block with id `files` (in the right panel's stack
   `panel-body`) has `content.mod` set to `files-tabs` instead of `files`.
   Keep that id, because the tab bar's Files button selects it. The root also
-  has `"preview": "layouts/main-files-tabs.svg"`, the picture Settings shows.
+  has `"preview": "layouts/Files-Tabs.svg"`, the picture Settings shows.
 - One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`, `mod.json`
   (`"place": "none"`: it shows only where the layout puts it), and four
   icons (`chevron-down.svg`, `chevron-right.svg`, `file.svg`, `folder.svg`).
@@ -95,6 +95,9 @@ the project's folder while a file tab is in front.
 
 ## Watch out
 
+- Settings → Look labels a layout you add with its file name, exactly as
+  written, and names may only use letters, digits, `-` and `_`. That's why
+  the file is `Files-Tabs.json`: "Files Tabs" with a space isn't allowed.
 - It has to ship as a layout. Herdr's own layouts are read-only: a mod with
   `"place": "right"` is never docked into `main` (Herdr doesn't even mark
   it seen), so on stock Herdr a mod alone shows nothing.
@@ -118,8 +121,8 @@ the project's folder while a file tab is in front.
 ## Done when
 
 - `herdr-app check ~/.config/herdr-app/mods/files-tabs` passes.
-- Settings → Look shows "main-files-tabs" with its preview; with it chosen
-  (or after `layout.switch {"name":"main-files-tabs"}`), the tab bar's Files
+- Settings → Look shows "Files-Tabs" with its preview; with it chosen
+  (or after `layout.switch {"name":"Files-Tabs"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.
 - Clicking a `.js` file opens a tab named after it, with line numbers and
   syntax colors; clicking it again in the panel shows that same tab.

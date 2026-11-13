@@ -15,9 +15,9 @@ Give your agent this line:
 Add the Herdr layout at github.com/erickmenezes/herdr-files-tabs
 ```
 
-Or copy `layouts/main-files-tabs.json` and `layouts/main-files-tabs.svg` into
+Or copy `layouts/Files-Tabs.json` and `layouts/Files-Tabs.svg` into
 `~/.config/herdr-app/layouts/`, and `mods/files-tabs/` into
-`~/.config/herdr-app/mods/`. Then pick "main-files-tabs" in Settings → Look.
+`~/.config/herdr-app/mods/`. Then pick "Files-Tabs" in Settings → Look.
 `ctrl-shift-l` switches back to your usual layout.
 
 What it touches: it runs `sh` (to list folders) and `git status`, reads the
