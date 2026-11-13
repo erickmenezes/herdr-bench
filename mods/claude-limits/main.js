@@ -2,10 +2,15 @@
 // The numbers come from the status line: save-limits.sh writes ~/.cache/herdr-claude-limits/<account>.json.
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, watchFolder, home, theme } from "herdr";
+import { exec, watchFolder, home, theme, notify, shared, setShared } from "herdr";
 
 const WINDOWS = [["five_hour", "Session"], ["seven_day", "Weekly"]];
 const STALE = 30 * 60; // older than this, the row says when a session last saw it
+// A toast once per window when it reaches 80% and again at 100%. Shown ones are kept
+// in shared state ("<account>:<window>:<resets_at>:<threshold>"), so a restart or a
+// second copy doesn't repeat them; keys of windows that have reset are dropped.
+const ALERTED = "claude-limits.alerted";
+const THRESHOLDS = [100, 80];
 
 // claude -> Claude, claude-personal -> Personal, anything else as it is.
 const label = (a) => (a === "claude" ? "Claude" : a.replace(/^claude-/, "").replace(/^./, (c) => c.toUpperCase()));
@@ -36,10 +41,40 @@ export default class Limits extends View {
           try { const s = JSON.parse(line); if (s?.account && s.rate_limits) list.push(s); } catch { /* half-written or empty line */ }
         }
         this.accounts = list.sort((a, b) => a.account.localeCompare(b.account));
+        this.alert(this.accounts);
       } catch {
         this.accounts = [];
       } finally { cx.notify(); }
     });
+  }
+
+  alert(accounts) {
+    const now = Date.now() / 1000, seen = { ...(shared(ALERTED) ?? {}) };
+    let changed = false;
+    for (const key of Object.keys(seen)) {
+      if (Number(key.split(":")[2]) <= now) { delete seen[key]; changed = true; }
+    }
+    for (const a of accounts) {
+      if (now - (a.updated ?? 0) > STALE) continue;
+      for (const [key, name] of WINDOWS) {
+        const w = a.rate_limits[key];
+        if (!w?.resets_at || w.resets_at <= now) continue;
+        const pct = Math.round(w.used_percentage ?? 0);
+        // Only the highest threshold reached, so a jump to 100% doesn't also say 80%.
+        const level = THRESHOLDS.find(x => pct >= x);
+        if (!level) continue;
+        const id = `${a.account}:${key}:${w.resets_at}:${level}`;
+        if (seen[id]) continue;
+        seen[id] = true; changed = true;
+        if (level === 100) seen[`${a.account}:${key}:${w.resets_at}:80`] = true;
+        notify({
+          title: `Claude ${name.toLowerCase()} limit at ${pct}%`,
+          body: `${label(a.account)}${a.plan ? ` (${a.plan})` : ""} · resets in ${span(w.resets_at - now)}`,
+          level: level === 100 ? "error" : "warning",
+        });
+      }
+    }
+    if (changed) setShared(ALERTED, seen);
   }
 
   meter(t, id, name, w, now) {
