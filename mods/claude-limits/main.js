@@ -1,6 +1,6 @@
 // Claude's session (5-hour) and weekly limits, one block per Claude config folder.
 // The numbers come from the status line: save-limits.sh writes ~/.cache/herdr-claude-limits/<account>.json.
-import { View, div } from "gpui-kit";
+import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, watchFolder, home, theme } from "herdr";
 
@@ -72,7 +72,7 @@ export default class Limits extends View {
           const age = now - (a.updated ?? 0);
           return v_flex().id(`limits-${a.account}`).gap(8)
             .when(many || age > STALE, (el) => el.child(h_flex().items_center().gap(6).text_size(11)
-              .when(many, (el) => el.child(div().font_medium().text_color(t.muted).child(label(a.account))))
+              .when(many, (el) => el.child(image("icons/claude.svg").w(13).h(13).flex_none()).child(div().font_medium().text_color(t.muted).child(label(a.account))))
               .when(age > STALE, (el) => el.child(div().text_color(t.dim).child(`as of ${span(age)} ago`)))))
             .children(WINDOWS.map(([key, name]) => this.meter(t, `limits-${a.account}-${key}`, name, a.rate_limits[key], now)));
         })));

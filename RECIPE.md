@@ -46,7 +46,8 @@ the project's folder while a file tab is in front.
   color) and "resets in 1h 12m" on the right (11px, `dim`); under them a 4px
   bar on `raised`, filled to the percentage in `accent` under 50%, `ansi3`
   under 80%, `blocked` from 80%. With more than one account, each gets its
-  name above its meters (`~/.claude` → "Claude", `~/.claude-personal` →
+  name above its meters, after Herdr's 13px Claude icon
+  (`image("icons/claude.svg")`, sized with `.w()`/`.h()`) (`~/.claude` → "Claude", `~/.claude-personal` →
   "Personal"). With no saved limits: "No limits yet. They show up once a
   Claude session's status line runs save-limits.sh."
 
