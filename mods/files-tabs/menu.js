@@ -95,6 +95,32 @@ async function paste(m) {
   ask(m.location, m.background || !m.dir ? "refresh" : "expand", into);
 }
 
+// Runs a menu action; the panel's keys (main.js) run the same ones.
+export function act(m, action) {
+  const fail = (what) => () => notify({ title: `Couldn't ${what}`, level: "error" });
+  const items = m.items ?? [{ path: m.path, relative: m.relative, dir: m.dir }];
+  const dialog = (kind, height) => openOverlay({ mod: "files-tabs", kind: "dialog", width: 440, height,
+    props: { dialog: { kind, path: kind === "mkdir" ? folderOf(m) : m.path, paths: items.map(i => i.path), dir: m.dir, on: m.on, location: m.location, expand: kind === "mkdir" && m.dir && !m.background } } });
+  switch (action) {
+    case "open": ask(m.location, "open", m.path); break;
+    case "root": ask(m.location, "root", m.path); break;
+    case "terminal": run("terminal.open", { folder: m.path, place: "tab" }); break;
+    case "default": exec("open", [m.path]).catch(fail("open it")); break;
+    case "reveal": exec("open", m.background ? [m.path] : ["-R", m.path]).catch(fail("show it in Finder")); break;
+    case "cut": case "copy": setShared(CLIPBOARD, { paths: items.map(i => i.path), on: m.on ?? null, mode: action }); break;
+    case "paste": paste(m); break;
+    case "path": {
+      const text = items.map(i => i.path).join("\n");
+      copyText(text).then(() => notify({ title: items.length > 1 ? `${items.length} paths copied` : "Path copied", body: items.length > 1 ? "" : text, timeout: 2000 })).catch(fail("copy the path"));
+      break;
+    }
+    case "relative": copyText(m.relative).then(() => notify({ title: "Relative path copied", body: m.relative, timeout: 2000 })).catch(fail("copy the path")); break;
+    case "mkdir": dialog("mkdir", 196); break;
+    case "rename": dialog("rename", 196); break;
+    case "trash": dialog("trash", items.length > 1 ? 200 : 176); break;
+  }
+}
+
 export class MenuView {
   constructor(p, cx) {
     this.m = p.menu;
@@ -104,30 +130,8 @@ export class MenuView {
   }
 
   choose(action) {
-    const m = this.m;
     closeOverlay(props()?.overlay);
-    const fail = (what) => () => notify({ title: `Couldn't ${what}`, level: "error" });
-    const items = m.items ?? [{ path: m.path, relative: m.relative, dir: m.dir }];
-    const dialog = (kind, height) => openOverlay({ mod: "files-tabs", kind: "dialog", width: 440, height,
-      props: { dialog: { kind, path: kind === "mkdir" ? folderOf(m) : m.path, paths: items.map(i => i.path), dir: m.dir, on: m.on, location: m.location, expand: kind === "mkdir" && m.dir && !m.background } } });
-    switch (action) {
-      case "open": ask(m.location, "open", m.path); break;
-      case "root": ask(m.location, "root", m.path); break;
-      case "terminal": run("terminal.open", { folder: m.path, place: "tab" }); break;
-      case "default": exec("open", [m.path]).catch(fail("open it")); break;
-      case "reveal": exec("open", m.background ? [m.path] : ["-R", m.path]).catch(fail("show it in Finder")); break;
-      case "cut": case "copy": setShared(CLIPBOARD, { paths: items.map(i => i.path), on: m.on ?? null, mode: action }); break;
-      case "paste": paste(m); break;
-      case "path": {
-        const text = items.map(i => i.path).join("\n");
-        copyText(text).then(() => notify({ title: items.length > 1 ? `${items.length} paths copied` : "Path copied", body: items.length > 1 ? "" : text, timeout: 2000 })).catch(fail("copy the path"));
-        break;
-      }
-      case "relative": copyText(m.relative).then(() => notify({ title: "Relative path copied", body: m.relative, timeout: 2000 })).catch(fail("copy the path")); break;
-      case "mkdir": dialog("mkdir", 196); break;
-      case "rename": dialog("rename", 196); break;
-      case "trash": dialog("trash", items.length > 1 ? 200 : 176); break;
-    }
+    act(this.m, action);
   }
 
   render(_cx) {

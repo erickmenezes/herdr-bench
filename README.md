@@ -3,7 +3,7 @@
 A [Herdr](https://herdr.dev) layout: Herdr's own window, with more to work
 with beside your agents.
 
-- **Files in tabs.** Click a file in the Files panel and it opens in its own
+- **Files in tabs.** Double-click a file in the Files panel and it opens in its own
   tab: code with syntax colors and line numbers, Markdown rendered, pictures
   (PNG, JPEG, GIF, WebP, SVG…) as pictures. Clicking it again goes back to
   its tab. Files and folders get colour icons (VS Code's Material Icon Theme,
@@ -17,6 +17,13 @@ with beside your agents.
   delete). ⌘-click or ⇧-click selects several rows, to cut, copy, copy the
   paths of or trash them together. Right-click the empty space for New
   Folder… and Paste at the top.
+- **Keyboard and a quick filter.** Click the panel, then use ↑/↓ (⇧ to
+  extend), ←/→ to close and open folders, ⌘C/⌘X/⌘V and ⌥⌘C for the path. On
+  macOS the keys follow Finder: Enter renames, ⌘↓ or ⌘O opens, ⌘⌫ moves to
+  the Trash, ⌘↑ goes up a level. On Linux and Windows, Enter opens, F2
+  renames, Delete moves to the Trash, Alt+↑ goes up (Ctrl in place of ⌘).
+  Just type to filter: the panel lists every file and folder below the root
+  whose name contains the text; Esc clears it.
 - **Claude's limits.** Above Agents, a Limits panel shows how much of
   Claude's session (5-hour) and weekly limits you've used, per account, with
   each account's plan, and a notification when one reaches 80% and 100%.
@@ -56,8 +63,8 @@ It needs `jq`. Each Claude config folder (`~/.claude`, or whatever
 `CLAUDE_CONFIG_DIR` points to) gets its own row. Without a status line, the
 panel says so and stays empty.
 
-What it touches: the Files panel runs `sh` (to list folders), `stat` and
-`git status`, reads the files you click, and, only from its right-click
+What it touches: the Files panel runs `sh` (to list folders), `stat`,
+`find` (for the filter) and `git status`, reads the files you click, and, only from its right-click
 menu, `open`, `pbcopy` (or `wl-copy`/`xclip`/`xsel`), `mkdir`, `cp -R -p` to
 paste a copy, `mv -n` to rename or paste a cut, and
 `/usr/bin/trash` (else Finder via `osascript`; `gio trash` or `trash-put` on

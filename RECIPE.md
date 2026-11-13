@@ -3,7 +3,7 @@
 Herdr's own window (the `main` layout), with three additions: a Files panel
 whose files open in their own tabs, a Limits panel with Claude's session and
 weekly limits above Agents, and a Scratchpad button after Files in the tab
-bar. In the Files panel, clicking a file opens it in its own tab instead of
+bar. In the Files panel, double-clicking a file opens it in its own tab instead of
 a preview squeezed into the panel. The tab is named after the file
 and shows it read-only: code with syntax colors and line numbers, Markdown
 rendered (with a Source button to see the raw text). Clicking the same file
@@ -116,13 +116,39 @@ the project's folder while a file tab is in front.
   selected: Cut N Items, Copy N Items, Copy N Paths (one per line), Move N
   Items to Trash… ("Move 3 items to the Trash?" with their names).
   Right-click a row outside the selection selects just that row.
+- Keyboard: a click (or `pane.go` into it, `"focusable": true`) gives the
+  panel the keyboard (opening a file hands it to the file's tab). A cursor
+  row moves with ↑/↓ (⇧ extends from the
+  anchor, like ⇧-click), Home/End; → opens a folder, then steps into it; ←
+  closes it, or steps to the folder above. The cursor row scrolls into view.
+  `cmd` below is ⌘ on macOS and Ctrl elsewhere. On every platform:
+  `cmd-a` selects every shown row, `cmd-c` / `cmd-x` copy or cut the
+  selection, `cmd-v` pastes into the selected folder (or the selected file's
+  folder, or the root), `cmd-alt-c` copies the paths, Esc clears the filter,
+  then the selection.
+  - macOS, as in Finder: Enter renames (one row), `cmd-down` / `cmd-o`
+    opens a file or makes a folder the root, `cmd-backspace` Move to Trash…,
+    `cmd-up` up one level.
+  - Linux and Windows: Enter opens a file or opens and closes a folder, F2
+    renames, Delete Move to Trash…, `alt-up` up one level.
+  They run the row menu's own actions, so Rename and the Trash ask first.
+- Quick filter: typing a character (not with ⌘/Ctrl; a space only after the
+  first one) starts a filter, shown in a 30px strip under the header with
+  the text, the count ("300+" at the limit) and "esc"; Backspace edits it.
+  120ms after the last key, `find <root> -iname '*text*'` (skipping `.git`
+  and `node_modules`, at most 300) replaces the tree with a flat list: icon,
+  name, and its folder in `dim` 11px; names starting with the text first,
+  then the shallower ones. The first match is selected. Enter or a double-click
+  opens a file; a folder shows in the tree with the folders above it open.
+  Windows (no `find`) searches the open folders only.
 - A rename, or a cut pasted elsewhere, moves open tabs along: the tab of a
   renamed file takes the new name, a tab inside a renamed or moved folder
   keeps working, also after a restart, and clicking the file under its new
   name goes back to that same tab.
-- Click a folder: it opens or closes in place. Click a file: a new tab opens
-  in the shown space, named after the file, and becomes the shown tab.
-- Click a file that already has a tab: that tab is shown again; no second tab.
+- Click a folder: it opens or closes in place. Click a file: it is
+  selected. Double-click a file: a new tab opens in the shown space, named
+  after the file, and becomes the shown tab.
+- Double-click a file that already has a tab: that tab is shown again; no second tab.
   This works across restarts as long as the tab is still open.
 - The panel follows the focused terminal's folder, like Herdr's Files. When the
   focused pane is a file tab (which has no folder of its own), the panel stays
@@ -370,10 +396,13 @@ the project's folder while a file tab is in front.
 - Settings → Look shows "Workbench" with its preview; with it chosen
   (or after `layout.switch {"name":"Workbench"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.
-- Clicking a `.js` file opens a tab named after it, with line numbers and
-  syntax colors; clicking it again in the panel shows that same tab.
-- Clicking a `.md` file shows it rendered without its front matter;
+- Double-clicking a `.js` file opens a tab named after it, with line numbers and
+  syntax colors; double-clicking it again in the panel shows that same tab.
+- Double-clicking a `.md` file shows it rendered without its front matter;
   "Source" shows the raw text and "Preview" goes back.
 - With a file tab in front, the panel still lists the project's folder, not
   the home folder.
 - Editing the open file on disk updates the tab within a second or two.
+- With the panel clicked, ↓/↑ move the selection, Enter renames on macOS
+  (opens elsewhere), ⌘C then ⌘V on a folder pastes a copy into it, and typing
+  `menu` lists `mods/files-tabs/menu.js`; Esc brings the tree back.

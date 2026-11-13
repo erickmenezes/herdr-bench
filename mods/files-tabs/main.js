@@ -1,12 +1,12 @@
-// Files in Tabs: Herdr's Files panel, except a click on a file opens it in its own tab.
+// Files in Tabs: Herdr's Files panel, except a double-click on a file opens it in its own tab.
 // Without props it is the panel (a lazy tree of the focused pane's folder); with
 // props { file, on } it is that tab, a read-only viewer (./viewer.js).
 // Based on the Files mod shipped with Herdr (Apache-2.0); changes listed in RECIPE.md.
 import { View, div, svg, image } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, theme, window, run, shared, setShared, props, openOverlay } from "herdr";
+import { v_flex, h_flex, ScrollHandle } from "gpui-base";
+import { spaces, panes, focused, exec, watchFolder, theme, window, run, shared, setShared, props, openOverlay, nextCommand } from "herdr";
 import Viewer from "./viewer.js";
-import { menuItems, MenuView, CLIPBOARD, clipPaths } from "./menu.js";
+import { menuItems, MenuView, CLIPBOARD, clipPaths, act } from "./menu.js";
 import { DialogView } from "./dialog.js";
 import { OPEN_TABS } from "./moves.js";
 // Colour icons from the Better Icons mod when it is installed; else the plain ones below.
@@ -56,7 +56,27 @@ const headerButton = (id, icon, tip, action) => {
     .hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_click((_e, cx) => action(cx))
     .child(svg(icon).size(14));
 };
-const PER_FOLDER = 500, TOTAL = 5000;
+const PER_FOLDER = 500, TOTAL = 5000, FOUND = 300;
+const mac = () => window()?.platform === "macos";
+
+// The filter's search: names containing the text anywhere below the root (not in
+// .git or node_modules), as "kind\0path\0" pairs; at most FOUND.
+const SEARCH = [
+  'root=$1; pat=$2; max=$3',
+  'find "$root" -mindepth 1 \\( -name .git -o -name node_modules \\) -prune -o -iname "$pat" -print 2>/dev/null | head -n "$max" |',
+  'while IFS= read -r p; do if [ -d "$p" ]; then printf "d\\0%s\\0" "$p"; else printf "f\\0%s\\0" "$p"; fi; done',
+].join("\n");
+async function search(root, text, on) {
+  const pat = `*${text.replace(/[[\]*?\\]/g, c => `\\${c}`)}*`;
+  const r = await exec("sh", ["-c", SEARCH, "search", root, pat, String(FOUND)], { on, timeout: 15000 });
+  const parts = r.stdout.split("\0"), found = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) if (parts[i + 1].startsWith(`${root}/`))
+    found.push({ path: parts[i + 1].slice(root.length + 1), dir: parts[i] === "d" });
+  const t = text.toLowerCase(), name = p => p.split("/").pop().toLowerCase();
+  // Names that start with the text first, then the shallower ones.
+  return found.sort((a, b) => Number(!name(a.path).startsWith(t)) - Number(!name(b.path).startsWith(t))
+    || a.path.split("/").length - b.path.split("/").length || a.path.localeCompare(b.path));
+}
 // The row menu is another copy of this mod (a popup): what it asks of the panel comes
 // through shared state, { id, at, location, kind: "root" | "open" | "refresh" | "expand", path },
 // acted on once. "expand" reloads with that folder (and the ones above it) open.
@@ -107,6 +127,11 @@ export default class FilesTabs extends View {
     // Selected rows (paths below the root): a click picks one, ⌘-click adds or removes,
     // ⇧-click picks the range from the last clicked row (the anchor).
     this.selected = new Set(); this.anchor = null; this.visible = []; this.kinds = new Map();
+    // Keyboard: the row the arrows are on (cursor), and the filter typed into the panel,
+    // whose matches (found) replace the tree while it isn't empty.
+    this.cursor = null; this.filter = ""; this.found = null; this.searching = false;
+    this.handle = cx.focus_handle(); this.scroll = ScrollHandle.new(); this.reveal = null;
+    cx.spawn(async cx => { for (;;) { if (await nextCommand() === "focus") { this.handle.focus(); cx.notify(); } } });
     this.refresh(cx);
     cx.timer.every(10000, cx => this.refresh(cx));
   }
@@ -141,7 +166,8 @@ export default class FilesTabs extends View {
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.base = base ?? null; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.watched = null; this.error = null; this.limited = false;
-      this.selected = new Set(); this.anchor = null;
+      this.selected = new Set(); this.anchor = null; this.cursor = null;
+      this.filter = ""; this.found = null;
       this.loading = false;
     }
     if (!cwd || this.loading) return;
@@ -243,8 +269,26 @@ export default class FilesTabs extends View {
     return out;
   }
 
+  // The filter's matches, a flat list: the name, then the folder it is in.
+  foundRows(t, light = isLight(t.background)) {
+    return this.found.map(({ path, dir }) => {
+      const entry = { name: path.split("/").pop(), dir }, folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+      this.visible.push(path); this.kinds.set(path, dir);
+      return h_flex().id(`found-${path}`).h(28).flex_none().px(8).gap(7).items_center().rounded(7).cursor_pointer()
+        .when(this.selected.has(path), el => el.bg(t.selected))
+        .hover(s => s.bg(t.hover))
+        .on_click((e, cx) => this.click(path, entry, e, cx))
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.rightClick(path, entry, cx); })
+        .child((icon => icon ? image(icon).w(14).h(14).flex_none() : svg(`mods/files-tabs/${dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))(
+          fileIcon(this.fileIcons, `${this.root}/${path}`, { dir, open: false, light })))
+        .child(div().flex_none().max_w_full().truncate().child(entry.name))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(folder));
+    });
+  }
+
   click(path, entry, e, cx) {
     const m = e.modifiers ?? {};
+    this.handle.focus(); this.cursor = path;
     if (m.platform) {
       if (this.selected.has(path)) this.selected.delete(path); else this.selected.add(path);
       this.anchor = path; cx.notify(); return;
@@ -255,7 +299,9 @@ export default class FilesTabs extends View {
       cx.notify(); return;
     }
     this.selected = new Set([path]); this.anchor = path;
-    if (!entry.dir) this.open(path);
+    if (this.found && entry.dir) { this.showInTree(path, cx); return; }
+    // A click selects a file and a double-click opens it (its tab takes the keyboard).
+    if (!entry.dir) { if (e.click_count >= 2) this.open(path); }
     else if (e.click_count >= 2) this.showAsRoot(`${this.root}/${path}`, cx);
     else this.toggle(path, cx);
     cx.notify();
@@ -263,12 +309,123 @@ export default class FilesTabs extends View {
 
   // On a selected row the menu acts on every selected row; elsewhere it picks that row.
   rightClick(path, entry, cx) {
-    if (!this.selected.has(path)) { this.selected = new Set([path]); this.anchor = path; }
-    const items = this.visible.filter(p => this.selected.has(p)).map(p => ({ path: `${this.root}/${p}`, relative: p, dir: this.kinds.get(p) }));
-    const menu = { path: `${this.root}/${path}`, relative: path, dir: entry.dir, on: this.on, location: JSON.stringify(location()),
-      items: items.length > 1 ? items : undefined };
+    this.handle.focus();
+    if (!this.selected.has(path)) { this.selected = new Set([path]); this.anchor = path; this.cursor = path; }
+    const menu = this.menuFor(path, entry.dir);
     openOverlay({ mod: "files-tabs", kind: "popup", width: 230, height: 32 * menuItems(menu).length + 24, props: { menu } });
     cx.notify();
+  }
+
+  // What the row menu (and the keys) act on: the row, or every selected row when it is one.
+  menuFor(path, dir) {
+    const items = this.visible.filter(p => this.selected.has(p)).map(p => ({ path: `${this.root}/${p}`, relative: p, dir: this.kinds.get(p) }));
+    return { path: `${this.root}/${path}`, relative: path, dir, on: this.on, location: JSON.stringify(location()),
+      items: items.length > 1 ? items : undefined };
+  }
+
+  // Leaves the filter and shows a found row in the tree: the folders above it open.
+  showInTree(path, cx) {
+    const parts = path.split("/");
+    parts.slice(0, -1).forEach((_, i) => this.folders.add(parts.slice(0, i + 1).join("/")));
+    this.filter = ""; this.found = null;
+    this.selected = new Set([path]); this.anchor = this.cursor = this.reveal = path;
+    this.refresh(cx);
+    cx.notify();
+  }
+
+  setFilter(text, cx) {
+    this.filter = text;
+    if (!text) { this.found = null; cx.notify(); return; }
+    const context = this.context, asked = text;
+    this.searching = true; cx.notify();
+    cx.spawn(async cx => {
+      await cx.sleep(120); // typing on: only the last one searches
+      if (this.filter !== asked || !this.current(context)) return;
+      let found;
+      if (window()?.platform === "windows" && !this.on) {
+        // No find: the open folders only.
+        const t = asked.toLowerCase();
+        found = [...this.entries.entries()].flatMap(([prefix, list]) => list.map(e => ({ path: prefix ? `${prefix}/${e.name}` : e.name, dir: e.dir })))
+          .filter(e => e.path.split("/").pop().toLowerCase().includes(t)).slice(0, FOUND);
+      } else found = await search(this.root, asked, this.on).catch(() => []);
+      if (this.filter !== asked || !this.current(context)) return;
+      this.found = found; this.searching = false;
+      const first = found[0]?.path ?? null;
+      this.selected = new Set(first ? [first] : []); this.anchor = this.cursor = first;
+      this.scroll.scroll_to_item(0);
+      cx.notify();
+    });
+  }
+
+  // Moves the cursor to a row; with shift, the selection runs from the anchor to it.
+  moveTo(path, extend, cx) {
+    if (!path) return;
+    this.cursor = path;
+    if (extend && this.anchor && this.visible.includes(this.anchor)) {
+      const a = this.visible.indexOf(this.anchor), b = this.visible.indexOf(path);
+      this.selected = new Set(this.visible.slice(Math.min(a, b), Math.max(a, b) + 1));
+    } else { this.selected = new Set([path]); this.anchor = path; }
+    this.scroll.scroll_to_item(this.visible.indexOf(path));
+    cx.notify();
+  }
+
+  // Finder's keys on macOS (Enter renames, ⌘↓ opens, ⌘⌫ to the Trash, ⌘↑ up a level),
+  // the usual ones elsewhere (Enter opens, F2 renames, Delete, Alt+↑). Typing filters.
+  keyDown(e, cx) {
+    const k = e.keystroke, m = e.modifiers ?? {}, onMac = mac(), cmd = onMac ? "cmd" : "ctrl";
+    const at = this.cursor && this.visible.includes(this.cursor) ? this.cursor : null, i = this.visible.indexOf(at);
+    const dir = at ? Boolean(this.kinds.get(at)) : false;
+    const many = this.visible.filter(p => this.selected.has(p)).length > 1;
+    const unix = window()?.platform !== "windows";
+    const open = () => { if (!at) return; if (this.found) dir ? this.showInTree(at, cx) : this.open(at); else if (!dir) this.open(at); else if (onMac) this.showAsRoot(`${this.root}/${at}`, cx); else this.toggle(at, cx); };
+    const menu = (action) => { if (at && unix) act(this.menuFor(at, dir), action); };
+    const handled = (() => {
+      switch (k) {
+        case "down": case "shift-down": this.moveTo(this.visible[at ? Math.min(i + 1, this.visible.length - 1) : 0], m.shift, cx); return true;
+        case "up": case "shift-up": this.moveTo(this.visible[at ? Math.max(i - 1, 0) : this.visible.length - 1], m.shift, cx); return true;
+        case "home": this.moveTo(this.visible[0], false, cx); return true;
+        case "end": this.moveTo(this.visible[this.visible.length - 1], false, cx); return true;
+        case "right":
+          if (!at || !dir || this.found) return true;
+          if (!this.folders.has(at)) this.toggle(at, cx); else if (this.visible[i + 1]?.startsWith(`${at}/`)) this.moveTo(this.visible[i + 1], false, cx);
+          return true;
+        case "left":
+          if (!at || this.found) return true;
+          if (dir && this.folders.has(at)) this.toggle(at, cx);
+          else if (at.includes("/")) this.moveTo(at.slice(0, at.lastIndexOf("/")), false, cx);
+          return true;
+        case "escape":
+          if (this.filter) this.setFilter("", cx); else { this.selected = new Set(); this.anchor = this.cursor = null; cx.notify(); }
+          return true;
+        case "backspace": if (this.filter) { this.setFilter(this.filter.slice(0, -1), cx); return true; } break;
+        case `${cmd}-a`: this.selected = new Set(this.visible); cx.notify(); return true;
+        case `${cmd}-c`: menu("copy"); return true;
+        case `${cmd}-x`: menu("cut"); return true;
+        case `${cmd}-alt-c`: menu("path"); return true;
+        case `${cmd}-v`: {
+          if (!unix || !this.root) return true;
+          // Into the selected folder, the selected file's folder, or the root.
+          const into = at && !many ? this.menuFor(at, dir) : { path: this.root, relative: "", dir: true, on: this.on, location: JSON.stringify(location()), background: true };
+          act(into, "paste"); return true;
+        }
+      }
+      if (onMac) switch (k) {
+        case "enter": if (this.found) open(); else if (at && !many && unix) menu("rename"); return true;
+        case "cmd-down": case "cmd-o": open(); return true;
+        case "cmd-up": if (this.root && this.root !== "/") this.showAsRoot(parentOf(this.root), cx); return true;
+        case "cmd-backspace": menu("trash"); return true;
+      } else switch (k) {
+        case "enter": open(); return true;
+        case "f2": if (at && !many && unix) menu("rename"); return true;
+        case "delete": menu("trash"); return true;
+        case "alt-up": if (this.root && this.root !== "/") this.showAsRoot(parentOf(this.root), cx); return true;
+      }
+      // Anything else that types a character filters (not with ⌘ or Ctrl).
+      const ch = e.key_char;
+      if (ch && ch.length === 1 && ch >= " " && !m.platform && !m.control && !(ch === " " && !this.filter)) { this.setFilter(this.filter + ch, cx); return true; }
+      return false;
+    })();
+    if (handled) cx.stop_propagation();
   }
 
   // Pins a folder in place of the terminal's; null goes back to the terminal's folder.
@@ -308,21 +465,30 @@ export default class FilesTabs extends View {
     this.remember();
     this.answer(cx);
     const t = theme();
-    return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    if (this.reveal && this.visible.includes(this.reveal)) { this.scroll.scroll_to_item(this.visible.indexOf(this.reveal)); this.reveal = null; }
+    return v_flex().id("files").track_focus(this.handle).on_key_down((e, cx) => this.keyDown(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child("Files"))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(this.base ? t.foreground : t.dim).child(this.root?.split(/[\\/]/).pop() || this.root || ""))
         .when(Boolean(this.root) && this.root !== "/", el => el.child(headerButton("files-up", "mods/files-tabs/up.svg", "Up one level", cx => this.showAsRoot(parentOf(this.root), cx))))
         .when(Boolean(this.base), el => el.child(headerButton("files-back", "mods/files-tabs/home.svg", "Back to the terminal's folder", cx => this.showAsRoot(null, cx)))))
-      .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+      .when(Boolean(this.filter), el => el.child(h_flex().h(30).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).text_size(12)
+        .child(div().text_color(t.dim).child("Filter"))
+        .child(div().flex_1().min_w(0).truncate().child(`${this.filter}▏`))
+        .child(div().flex_none().text_color(t.dim).child(this.searching ? "…" : `${this.found?.length ?? 0}${this.found?.length >= FOUND ? "+" : ""}`))
+        .child(div().id("files-filter-clear").flex_none().px(4).rounded(4).cursor_pointer().text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .tooltip("Clear (Esc)").on_click((_e, cx) => this.setFilter("", cx)).child("esc"))))
+      .child(v_flex().id("files-tree").track_scroll(this.scroll).flex_1().min_h(0).overflow_y_scrollbar().p(6)
         // The tree's empty space: New Folder… and Paste for the panel's root (rows stop this).
         .on_mouse_down("right", (_e, cx) => {
           if (!this.root) return;
+          this.handle.focus();
           const menu = { path: this.root, relative: "", dir: true, on: this.on, location: JSON.stringify(location()), background: true };
           openOverlay({ mod: "files-tabs", kind: "popup", width: 230, height: 32 * menuItems(menu).length + 24, props: { menu } });
         })
-        .children((this.visible = [], this.kinds = new Map(), this.rows("", 0, [], t)))
-        .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
+        .children((this.visible = [], this.kinds = new Map(), this.found ? this.foundRows(t) : this.filter ? [] : this.rows("", 0, [], t)))
+        .when(Boolean(this.found) && !this.found.length && !this.searching, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(`Nothing named like “${this.filter}”`)))
+        .when(!this.filter && (Boolean(this.error) || !this.entries.get("")?.length), el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total"))));
   }
 }
