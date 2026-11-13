@@ -19,15 +19,15 @@ if [ -f "$file" ]; then
 fi
 # Claude Code keeps its config in $CLAUDE_CONFIG_DIR/.claude.json, or ~/.claude.json without it.
 if [ -n "$CLAUDE_CONFIG_DIR" ]; then cfg="$CLAUDE_CONFIG_DIR/.claude.json"; else cfg="$HOME/.claude.json"; fi
-# claude_pro -> "Pro", claude_max + ..._max_5x -> "Max 5x", claude_team with a seat of its own
-# 5x/20x tier -> "Team Premium" (Standard seats have none) -> else "Team"; nothing known -> "".
+# claude_pro -> "Pro", claude_max + ..._max_5x -> "Max 5x", claude_team whose seat tier is
+# ..._max_5x -> "Team Max 5x", else "Team"; nothing known -> "".
 plan=$(jq -r '.oauthAccount // {}
   | (.organizationType // "" | sub("^claude_"; "")) as $t
   | (first((.userRateLimitTier // ""), (.organizationRateLimitTier // "") | capture("_(?<x>[0-9]+x)$").x) // "") as $x
   | (first((.userRateLimitTier // "") | capture("_(?<x>[0-9]+x)$").x) // "") as $seat
   | ($t[0:1] | ascii_upcase) + $t[1:] as $name
   | if $t == "" then ""
-    elif $t == "team" then $name + (if $seat != "" then " Premium" else "" end)
+    elif $t == "team" then $name + (if $seat != "" then " Max " + $seat else "" end)
     elif $x != "" then $name + " " + $x
     else $name end' \
   "$cfg" 2>/dev/null)

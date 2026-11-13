@@ -49,7 +49,7 @@ the project's folder while a file tab is in front.
   Herdr's 13px Claude icon (`image("icons/claude.svg")`, sized with
   `.w()`/`.h()`), its name (`~/.claude` → "Claude", `~/.claude-personal` →
   "Personal"), and its plan in a small pill (10px, medium, `muted` on
-  `raised`, 4px corners), such as "Pro", "Max 5x" or "Team Premium". With no saved limits: "No limits yet. They show up once a
+  `raised`, 4px corners), such as "Pro", "Max 5x" or "Team Max 5x". With no saved limits: "No limits yet. They show up once a
   Claude session's status line runs save-limits.sh."
 
 ## How it behaves
@@ -94,9 +94,9 @@ the project's folder while a file tab is in front.
     `$CLAUDE_CONFIG_DIR/.claude.json`, or `~/.claude.json` when that isn't
     set (not `~/.claude/.claude.json`, which can be an old leftover):
     `organizationType` without `claude_`, capitalized. Max adds the `5x`/`20x`
-    ending of its rate limit tier ("Max 5x"). Team adds "Premium" when
-    `userRateLimitTier` (the seat's own tier) has such an ending, since
-    Standard seats have none ("Team Premium", else "Team"). "" if unknown. `rate_limits` is what Claude Code passes:
+    ending of its rate limit tier ("Max 5x"). Team adds "Max" and the ending
+    of `userRateLimitTier`, the seat's own tier, when it has one
+    ("Team Max 5x", else "Team"). "" if unknown. `rate_limits` is what Claude Code passes:
     `five_hour` and `seven_day`, each `{used_percentage, resets_at}` (Unix
     seconds).
   - `main.js` default-exports a `View`: it reads every snapshot with one
