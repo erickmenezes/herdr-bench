@@ -47,9 +47,9 @@ the project's folder while a file tab is in front.
   bar on `raised`, filled to the percentage in `accent` under 50%, `ansi3`
   under 80%, `blocked` from 80%. Each account gets a row above its meters:
   Herdr's 13px Claude icon (`image("icons/claude.svg")`, sized with
-  `.w()`/`.h()`), its name, and its plan in a small pill (10px, medium,
-  `muted` on `raised`, 4px corners), such as "Pro" or "Max 5x" (`~/.claude` → "Claude", `~/.claude-personal` →
-  "Personal"). With no saved limits: "No limits yet. They show up once a
+  `.w()`/`.h()`), its name (`~/.claude` → "Claude", `~/.claude-personal` →
+  "Personal"), and its plan in a small pill (10px, medium, `muted` on
+  `raised`, 4px corners), such as "Pro" or "Max 5x". With no saved limits: "No limits yet. They show up once a
   Claude session's status line runs save-limits.sh."
 
 ## How it behaves
