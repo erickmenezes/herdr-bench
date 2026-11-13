@@ -1,38 +1,43 @@
-# Files in Tabs
+# Workbench
 
-A [Herdr](https://herdr.dev) layout: Herdr's own window, except that clicking
-a file in the Files panel opens it in its own tab. Code shows with syntax
-colors and line numbers, Markdown shows rendered, and pictures (PNG, JPEG,
-GIF, WebP, SVG…) show as pictures. Clicking the same file again goes back to
-its tab. The panel shows each file's size, and a double-click on a folder
-shows it as the root, with buttons for up one level and back to the
-terminal's folder. Right-click a row for Open, Show as Root, New Terminal
-Here, Open with Default App, Reveal in Finder, Cut, Copy, Paste, Copy Path,
-Copy Relative Path, New Folder…, Rename… and Move to Trash… (never a plain
-delete); right-click the empty space for New Folder… and Paste at the top. Files and folders get colour icons (VS Code's
-Material Icon Theme, through the bundled Better Icons mod). Above Agents, a
-Limits panel shows how much of Claude's session (5-hour) and weekly limits
-you've used, per account. And a note button after Files in the tab bar (or
-`cmd-shift-n`) opens a Scratchpad: an empty tab for quick plain-text notes
-that stays until you close it.
+A [Herdr](https://herdr.dev) layout: Herdr's own window, with more to work
+with beside your agents.
 
-![Files in Tabs](preview.png)
+- **Files in tabs.** Click a file in the Files panel and it opens in its own
+  tab: code with syntax colors and line numbers, Markdown rendered, pictures
+  (PNG, JPEG, GIF, WebP, SVG…) as pictures. Clicking it again goes back to
+  its tab. Files and folders get colour icons (VS Code's Material Icon Theme,
+  through the bundled Better Icons mod), each file shows its size, and a
+  double-click on a folder shows it as the root, with buttons for up one
+  level and back to the terminal's folder.
+- **A right-click menu** on every row: Open, Show as Root, New Terminal Here,
+  Open with Default App, Reveal in Finder, Cut, Copy, Paste, Copy Path, Copy
+  Relative Path, New Folder…, Rename… and Move to Trash… (never a plain
+  delete). Right-click the empty space for New Folder… and Paste at the top.
+- **Claude's limits.** Above Agents, a Limits panel shows how much of
+  Claude's session (5-hour) and weekly limits you've used, per account, with
+  each account's plan.
+- **A Scratchpad.** A note button after Files in the tab bar (or
+  `cmd-shift-n`) opens an empty tab for quick plain-text notes that stays
+  until you close it.
+
+![Workbench](preview.png)
 
 ## Install
 
 Give your agent this line:
 
 ```
-Add the Herdr layout at github.com/erickmenezes/herdr-files-tabs
+Add the Herdr layout at github.com/erickmenezes/herdr-workbench
 ```
 
-Or copy `layouts/Files-Tabs.json` and `layouts/Files-Tabs.svg` into
+Or copy `layouts/Workbench.json` and `layouts/Workbench.svg` into
 `~/.config/herdr-app/layouts/`, and the five folders in `mods/`
 (`files-tabs`, `better-icons`, `claude-limits`, `scratchpad`, `tab-bar-extras`)
 into `~/.config/herdr-app/mods/`. If you already have Better Icons installed,
 keep yours: other mods find it by the same name. Add the key in
 `keys.json` (`cmd-shift-n`, a new scratchpad) to your own `keys.json`, unless
-you already use that key. Then pick "Files-Tabs" in Settings → Look.
+you already use that key. Then pick "Workbench" in Settings → Look.
 `ctrl-shift-l` switches back to your usual layout.
 
 The Limits panel gets its numbers from Claude Code's status line, which is

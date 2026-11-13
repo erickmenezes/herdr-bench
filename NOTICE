@@ -1,9 +1,9 @@
-Files in Tabs
+Workbench
 Copyright 2026 Erick Menezes
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-mods/files-tabs adapts code from the Files mod and layouts/Files-Tabs.json
+mods/files-tabs adapts code from the Files mod and layouts/Workbench.json
 from the main layout shipped with Herdr Desktop 0.1.13
 (https://github.com/herdrdev/herdr-app), licensed under the Apache License,
 Version 2.0. Its chevron, file and folder icons come from that Files mod.

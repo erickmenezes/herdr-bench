@@ -1,14 +1,16 @@
-# Files in Tabs
+# Workbench
 
-Herdr's own window (the `main` layout), except that in the Files panel
-clicking a file opens it in its own tab instead of a preview squeezed into
-the panel. The tab is named after the file
+Herdr's own window (the `main` layout), with three additions: a Files panel
+whose files open in their own tabs, a Limits panel with Claude's session and
+weekly limits above Agents, and a Scratchpad button after Files in the tab
+bar. In the Files panel, clicking a file opens it in its own tab instead of
+a preview squeezed into the panel. The tab is named after the file
 and shows it read-only: code with syntax colors and line numbers, Markdown
 rendered (with a Source button to see the raw text). Clicking the same file
 again goes back to its tab instead of opening another. The panel keeps showing
 the project's folder while a file tab is in front.
 
-![Files in Tabs](preview.png)
+![Workbench](preview.png)
 
 ## What you see
 
@@ -130,12 +132,12 @@ the project's folder while a file tab is in front.
 
 ## Built from
 
-- One layout file, `layouts/Files-Tabs.json`: a clone of Herdr's
+- One layout file, `layouts/Workbench.json`: a clone of Herdr's
   `main` layout (`cloned_from: {name: "main", version: "0.1.13"}`) with
   one change: the block with id `files` (in the right panel's stack
   `panel-body`) has `content.mod` set to `files-tabs` instead of `files`.
   Keep that id, because the tab bar's Files button selects it. The root also
-  has `"preview": "layouts/Files-Tabs.svg"`, the picture Settings shows.
+  has `"preview": "layouts/Workbench.svg"`, the picture Settings shows.
   It also adds a block `limits` (`size: {px: 160}`, `min: 80`, mod
   `claude-limits`) in `sidebar-lists` between `spaces` and `agents`. The
   `tabs` block (still Herdr's own `tabs` mod) goes into a row `tab-bar`
@@ -287,8 +289,8 @@ the project's folder while a file tab is in front.
   minutes); a passed reset time still shows as 0%.
 
 - Settings → Look labels a layout you add with its file name, exactly as
-  written, and names may only use letters, digits, `-` and `_`. That's why
-  the file is `Files-Tabs.json`: "Files Tabs" with a space isn't allowed.
+  written, and names may only use letters, digits, `-` and `_` (no spaces),
+  so the file is `Workbench.json`.
 - It has to ship as a layout. Herdr's own layouts are read-only: a mod with
   `"place": "right"` is never docked into `main` (Herdr doesn't even mark
   it seen), so on stock Herdr a mod alone shows nothing.
@@ -318,8 +320,8 @@ the project's folder while a file tab is in front.
 - With the status line line added, `~/.cache/herdr-claude-limits/` has one
   file per account, and the Limits panel shows the same session and weekly
   percentages as Claude Code's own `/usage`.
-- Settings → Look shows "Files-Tabs" with its preview; with it chosen
-  (or after `layout.switch {"name":"Files-Tabs"}`), the tab bar's Files
+- Settings → Look shows "Workbench" with its preview; with it chosen
+  (or after `layout.switch {"name":"Workbench"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.
 - Clicking a `.js` file opens a tab named after it, with line numbers and
   syntax colors; clicking it again in the panel shows that same tab.
