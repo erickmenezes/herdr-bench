@@ -2,10 +2,12 @@
 // Without props it is the panel (a lazy tree of the focused pane's folder); with
 // props { file, on } it is that tab, a read-only viewer (./viewer.js).
 // Based on the Files mod shipped with Herdr (Apache-2.0); changes listed in RECIPE.md.
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, window, run, shared, setShared, props } from "herdr";
 import Viewer from "./viewer.js";
+// Colour icons from the Better Icons mod when it is installed; else the plain ones below.
+import { followFileIcons, fileIcon, isLight } from "./file-icons.js";
 
 // The last terminal folder seen in each space, so a file tab (a mod pane, no folder of
 // its own) keeps showing the folder the file came from instead of falling back to home.
@@ -59,6 +61,7 @@ export default class FilesTabs extends View {
   init(_props, cx) {
     const p = props();
     if (p?.file) { this.viewer = new Viewer(p, cx); return; }
+    followFileIcons(this, cx);
     this.saved = new Map();
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
     this.refresh(cx);
@@ -170,7 +173,7 @@ export default class FilesTabs extends View {
     setShared(OPEN_TABS, open);
   }
 
-  rows(prefix, depth, out, t) {
+  rows(prefix, depth, out, t, light = isLight(t.background)) {
     if (out.length >= TOTAL || depth > 40) return out;
     for (const entry of this.entries.get(prefix) ?? []) {
       if (out.length >= TOTAL) break;
@@ -178,10 +181,11 @@ export default class FilesTabs extends View {
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : this.open(path))
         .child(entry.dir ? svg(`mods/files-tabs/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
-        .child(svg(`mods/files-tabs/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
+        .child((icon => icon ? image(icon).w(14).h(14).flex_none() : svg(`mods/files-tabs/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))(
+          fileIcon(this.fileIcons, `${this.root}/${path}`, { dir: entry.dir, open, light })))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
         .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
-      if (entry.dir && open) this.rows(path, depth + 1, out, t);
+      if (entry.dir && open) this.rows(path, depth + 1, out, t, light);
     }
     return out;
   }

@@ -25,6 +25,16 @@ and `mods/scratchpad/` into `~/.config/herdr-app/mods/`. Add the key in
 you already use that key. Then pick "Files-Tabs" in Settings → Look.
 `ctrl-shift-l` switches back to your usual layout.
 
+For colour file and folder icons (VS Code's Material Icon Theme), also add
+[Better Icons](https://github.com/munza/herdr-mods/tree/main/better-icons):
+
+```
+Add the Herdr mod at github.com/munza/herdr-mods/tree/main/better-icons
+```
+
+The Files panel and file tabs use it when it's there and keep their plain
+icons when it isn't. It's about 5 MB, runs no programs and reaches no network.
+
 The Limits panel gets its numbers from Claude Code's status line, which is
 the only place Claude Code shares them. Add this line to your status line
 script, right after it reads its input into `$input`:

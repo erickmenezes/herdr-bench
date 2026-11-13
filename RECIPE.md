@@ -130,9 +130,19 @@ the project's folder while a file tab is in front.
   - `main.js` default-exports a `View`: it reads every snapshot with one
     `exec("sh", ["-c", 'for f in "$1"/*.json; do [ -f "$f" ] && cat "$f" && echo; done', "limits", dir])`,
     sorted by account; reloads on `watchFolder(dir)` and `cx.timer.every(30000)`.
-- One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`, `mod.json`
-  (`"place": "none"`: it shows only where the layout puts it), and four
-  icons (`chevron-down.svg`, `chevron-right.svg`, `file.svg`, `folder.svg`).
+- One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`,
+  `file-icons.js`, `mod.json` (`"place": "none"`: it shows only where the
+  layout puts it), and four icons (`chevron-down.svg`, `chevron-right.svg`,
+  `file.svg`, `folder.svg`).
+- Colour icons, optional: `file-icons.js` is a byte-for-byte copy of the one
+  in [Better Icons](https://github.com/munza/herdr-mods/tree/main/better-icons)
+  (Material Icon Theme's icons, read by path from `mods/better-icons/`). The
+  panel and each file tab call `followFileIcons(this, cx)` once, then draw
+  `fileIcon(this.fileIcons, <full path>, { dir, open, light: isLight(theme().background) })`
+  with `image(...).w(14).h(14)` (13 in a tab's title row); `image`, not
+  `svg`, so the icon keeps its colours. With no Better Icons installed it
+  returns null and the plain `folder.svg` / `file.svg` show, tinted `muted`.
+  Installing or updating Better Icons shows within 10 seconds, no restart.
 - `main.js` default-exports one `View` with two roles, chosen by `props()`:
   - **No props → the panel.** A lazy tree of `location().cwd`. Folders are
     listed with `exec("sh", ["-c", <script>, "files", path], { on })`, at

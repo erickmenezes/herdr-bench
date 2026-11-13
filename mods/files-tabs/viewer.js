@@ -1,8 +1,9 @@
 // The tab side of files-tabs: one file, read-only, in its own tab.
 // props: { file: absolute path, on: machine name or null (this computer) }
-import { div, svg } from "gpui-kit";
+import { div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { readTextFile, watchFolder, theme, settings, home } from "herdr";
+import { followFileIcons, fileIcon, isLight } from "./file-icons.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const MARKDOWN = new Set(["md", "markdown", "mdx"]);
@@ -24,6 +25,7 @@ export default class Viewer {
     this.source = !this.markdown;
     this.text = null;
     this.error = null;
+    followFileIcons(this, cx);
     this.load(cx);
     if (this.on) {
       // A file on another machine can't be watched: check now and then.
@@ -81,7 +83,8 @@ export default class Viewer {
               .child(TextView.markdown("md", this.text.replace(FRONT_MATTER, "")).selectable(true));
     return v_flex().id("root").size_full().min_h(0).overflow_hidden().bg(t.background).text_color(t.foreground).text_size(13)
       .child(h_flex().h(30).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(svg("mods/files-tabs/file.svg").size(13).flex_none().text_color(t.muted))
+        .child((icon => icon ? image(icon).w(13).h(13).flex_none() : svg("mods/files-tabs/file.svg").size(13).flex_none().text_color(t.muted))(
+          fileIcon(this.fileIcons, this.file, { light: isLight(t.background) })))
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.dim).child((this.on ? `${this.on}:` : "") + shown))
         .when(this.markdown && this.text !== null && !this.error, (el) => el.child(
           div().id("toggle-source").px(8).py(2).rounded(5).cursor_pointer().text_size(11).text_color(t.muted)
