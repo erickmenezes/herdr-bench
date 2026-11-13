@@ -1,7 +1,8 @@
 # Files in Tabs
 
-Herdr's Files panel, except that clicking a file opens it in its own tab
-instead of a preview squeezed into the panel. The tab is named after the file
+Herdr's own window (the `main` layout), except that in the Files panel
+clicking a file opens it in its own tab instead of a preview squeezed into
+the panel. The tab is named after the file
 and shows it read-only: code with syntax colors and line numbers, Markdown
 rendered (with a Source button to see the raw text). Clicking the same file
 again goes back to its tab instead of opening another. The panel keeps showing
@@ -57,9 +58,15 @@ the project's folder while a file tab is in front.
 
 ## Built from
 
+- One layout file, `layouts/main-files-tabs.json`: a clone of Herdr's
+  `main` layout (`cloned_from: {name: "main", version: "0.1.13"}`) with
+  one change: the block with id `files` (in the right panel's stack
+  `panel-body`) has `content.mod` set to `files-tabs` instead of `files`.
+  Keep that id, because the tab bar's Files button selects it. The root also
+  has `"preview": "layouts/main-files-tabs.svg"`, the picture Settings shows.
 - One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`, `mod.json`
-  (`"place": "right"`, `"size": 368`), and four icons (`chevron-down.svg`,
-  `chevron-right.svg`, `file.svg`, `folder.svg`).
+  (`"place": "none"`: it shows only where the layout puts it), and four
+  icons (`chevron-down.svg`, `chevron-right.svg`, `file.svg`, `folder.svg`).
 - `main.js` default-exports one `View` with two roles, chosen by `props()`:
   - **No props → the panel.** A lazy tree of `location().cwd`. Folders are
     listed with `exec("sh", ["-c", <script>, "files", path], { on })`, at
@@ -81,11 +88,6 @@ the project's folder while a file tab is in front.
 - The panel's folder (`location()`): `focused()`, `panes()`, `spaces()`. A
   focused pane with `terminal: null` is a mod pane, so the last terminal
   location of that space is used (kept in a module-level `Map`).
-- Placement: no layout of its own. `"place": "right"` makes Herdr dock one
-  copy, 368 px wide, into the shown layout the first time it sees the
-  folder; after that the layout keeps it where the person leaves it. It sits
-  beside the shipped Files panel and doesn't replace it, so the tab bar's
-  Files button still opens Herdr's own.
 - Derived from the Files mod shipped with Herdr 0.1.13 (Apache-2.0, see
   `LICENSE`). Changed: a file click opens a tab instead of an in-panel
   preview (the preview, its back arrow and the remembered previewed file are
@@ -93,6 +95,9 @@ the project's folder while a file tab is in front.
 
 ## Watch out
 
+- It has to ship as a layout. Herdr's own layouts are read-only: a mod with
+  `"place": "right"` is never docked into `main` (Herdr doesn't even mark
+  it seen), so on stock Herdr a mod alone shows nothing.
 - In a mod, `run()` returns `null`, so `tab.new` doesn't tell you the new
   tab's id. Record the space's tab ids before calling it, then on the next
   `render` look for a new tab with the file's name and store its id.
@@ -113,8 +118,9 @@ the project's folder while a file tab is in front.
 ## Done when
 
 - `herdr-app check ~/.config/herdr-app/mods/files-tabs` passes.
-- After copying the folder in, the panel appears on the right of the shown
-  layout and lists the focused terminal's folder with git marks.
+- Settings → Look shows "main-files-tabs" with its preview; with it chosen
+  (or after `layout.switch {"name":"main-files-tabs"}`), the tab bar's Files
+  button opens the panel and it lists the focused terminal's folder with git marks.
 - Clicking a `.js` file opens a tab named after it, with line numbers and
   syntax colors; clicking it again in the panel shows that same tab.
 - Clicking a `.md` file shows it rendered without its front matter;

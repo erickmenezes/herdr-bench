@@ -1,8 +1,9 @@
 # Files in Tabs
 
-A [Herdr](https://herdr.dev) mod: click a file in the Files panel and it opens
-in its own tab. Code shows with syntax colors and line numbers, and Markdown
-shows rendered. Clicking the same file again goes back to its tab.
+A [Herdr](https://herdr.dev) layout: Herdr's own window, except that clicking
+a file in the Files panel opens it in its own tab. Code shows with syntax
+colors and line numbers, and Markdown shows rendered. Clicking the same file
+again goes back to its tab.
 
 ![Files in Tabs](preview.png)
 
@@ -11,16 +12,18 @@ shows rendered. Clicking the same file again goes back to its tab.
 Give your agent this line:
 
 ```
-Add the Herdr mod at github.com/erickmenezes/herdr-files-tabs
+Add the Herdr layout at github.com/erickmenezes/herdr-files-tabs
 ```
 
-Or copy `mods/files-tabs/` into `~/.config/herdr-app/mods/`. Herdr docks it
-as a panel on the right of the layout you're in. No layout changes needed.
+Or copy `layouts/main-files-tabs.json` and `layouts/main-files-tabs.svg` into
+`~/.config/herdr-app/layouts/`, and `mods/files-tabs/` into
+`~/.config/herdr-app/mods/`. Then pick "main-files-tabs" in Settings → Look.
+`ctrl-shift-l` switches back to your usual layout.
 
 What it touches: it runs `sh` (to list folders) and `git status`, reads the
 files you click, and reaches no network.
 
 ## License
 
-Apache-2.0. Based on the Files mod that ships with Herdr; the changes are
-listed in [RECIPE.md](RECIPE.md).
+Apache-2.0. Based on the `main` layout and the Files mod that ship with
+Herdr; the changes are listed in [RECIPE.md](RECIPE.md).
