@@ -14,9 +14,8 @@ Give your agent this line:
 Add the Herdr mod at github.com/erickmenezes/herdr-files-tabs
 ```
 
-Or copy `mods/files-tabs/` into `~/.config/herdr-app/mods/`. Then clone the
-`main` layout and point its Files block at `files-tabs` (see "Built from" in
-[RECIPE.md](RECIPE.md)).
+Or copy `mods/files-tabs/` into `~/.config/herdr-app/mods/`. Herdr docks it
+as a panel on the right of the layout you're in. No layout changes needed.
 
 What it touches: it runs `sh` (to list folders) and `git status`, reads the
 files you click, and reaches no network.

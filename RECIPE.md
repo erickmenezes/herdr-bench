@@ -58,7 +58,7 @@ the project's folder while a file tab is in front.
 ## Built from
 
 - One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`, `mod.json`
-  (`"place": "none"`), and four icons (`chevron-down.svg`,
+  (`"place": "right"`, `"size": 368`), and four icons (`chevron-down.svg`,
   `chevron-right.svg`, `file.svg`, `folder.svg`).
 - `main.js` default-exports one `View` with two roles, chosen by `props()`:
   - **No props → the panel.** A lazy tree of `location().cwd`. Folders are
@@ -81,11 +81,11 @@ the project's folder while a file tab is in front.
 - The panel's folder (`location()`): `focused()`, `panes()`, `spaces()`. A
   focused pane with `terminal: null` is a mod pane, so the last terminal
   location of that space is used (kept in a module-level `Map`).
-- Layout: Herdr's `main` layout puts the shipped `files` mod in a stack
-  `panel-body`, child id `files`, which the tab bar's Files button selects.
-  To use this mod, clone `main` (`layout.clone {"name":"main","as":"main-files-tabs"}`)
-  and change only that block's `content.mod` from `files` to `files-tabs`.
-  Keep the child id `files` so the tab bar's button still works.
+- Placement: no layout of its own. `"place": "right"` makes Herdr dock one
+  copy, 368 px wide, into the shown layout the first time it sees the
+  folder; after that the layout keeps it where the person leaves it. It sits
+  beside the shipped Files panel and doesn't replace it, so the tab bar's
+  Files button still opens Herdr's own.
 - Derived from the Files mod shipped with Herdr 0.1.13 (Apache-2.0, see
   `LICENSE`). Changed: a file click opens a tab instead of an in-panel
   preview (the preview, its back arrow and the remembered previewed file are
@@ -113,8 +113,8 @@ the project's folder while a file tab is in front.
 ## Done when
 
 - `herdr-app check ~/.config/herdr-app/mods/files-tabs` passes.
-- With the cloned layout shown, the tab bar's Files button opens the panel
-  and it lists the focused terminal's folder with git marks.
+- After copying the folder in, the panel appears on the right of the shown
+  layout and lists the focused terminal's folder with git marks.
 - Clicking a `.js` file opens a tab named after it, with line numbers and
   syntax colors; clicking it again in the panel shows that same tab.
 - Clicking a `.md` file shows it rendered without its front matter;
