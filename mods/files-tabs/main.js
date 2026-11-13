@@ -455,7 +455,7 @@ export default class FilesTabs extends View {
     }
   }
 
-  async close() { this.viewer?.close(); }
+  async close() { await this.viewer?.close(); }
 
   render(cx) {
     if (this.viewer) return this.viewer.render(cx);

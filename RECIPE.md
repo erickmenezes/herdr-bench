@@ -5,7 +5,7 @@ whose files open in their own tabs, a Limits panel with Claude's session and
 weekly limits above Agents, and a Scratchpad button after Files in the tab
 bar. In the Files panel, double-clicking a file opens it in its own tab instead of
 a preview squeezed into the panel. The tab is named after the file
-and shows it read-only: code with syntax colors and line numbers, Markdown
+and shows it, editable when it's text on this computer: code with syntax colors and line numbers, Markdown
 rendered (with a Source button to see the raw text). Clicking the same file
 again goes back to its tab instead of opening another. The panel keeps showing
 the project's folder while a file tab is in front.
@@ -36,17 +36,32 @@ the project's folder while a file tab is in front.
   (12px, `dim`, with your home folder shown as `~`; `machine:` in front for a
   file on another machine) and, for Markdown and SVG files, a small 11px
   "Source" / "Preview" button on the right. Under it, the file:
-  - Code and text: a read-only editor with line numbers, folding and syntax
+  - Code and text: an editor with line numbers, folding and syntax
     colors in your theme (keywords `ansi5`, strings `ansi2`, comments `dim`,
     functions `ansi4`, types `ansi3`, numbers `ansi1`, constants `ansi6`),
-    12px in your terminal font.
+    12px in your terminal font. Editable for a file on this computer up to
+    400 KB; else read-only, with "On <machine>: read-only" or "Larger than
+    400 KB: read-only" in the header. Markdown's and SVG's Source is the same
+    editor, and Preview shows the edited text.
+  - Saving: with edits, the header shows "Edited", "Revert" and "Save" (⌘S
+    on macOS, Ctrl+S elsewhere). Save reads the file first; if it isn't what
+    the tab last read (another program changed or deleted it), nothing is
+    written and the header shows "Changed on disk" (`blocked` color) with
+    "Reload" (drop the edits) and "Overwrite". A change on disk with no
+    edits just reloads. The write is `writeTextFile(file, text, <what was
+    just read>)`. Unsaved edits are a draft in `localStorage` under `draft`,
+    `{ base, text }` (keyed by the tab's props): they come back after a
+    restart, or when the same file is opened again, and "Changed on disk"
+    shows if the file moved on since `base`.
   - Markdown (`.md`, `.markdown`, `.mdx`): rendered, selectable, with 20px
     side and 14px top/bottom padding. A YAML front matter block (`---` …
     `---` at the top) is hidden in the rendered view and shown in Source.
   - Pictures (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.ico`,
-    `.svg`): centered with 16px padding, at their own size or the tab's,
-    whichever is smaller. A file on another machine says "Picture preview
-    works for files on this computer only".
+    `.svg`): centered with 16px padding, fitted to the tab (scaled up or
+    down, keeping their proportions). "Actual Size" in the header shows the
+    picture at its own size (at most the tab's), and "Fit" goes back. A file
+    on another machine says "Picture preview works for files on this
+    computer only".
   - Messages instead of content: "Loading file…", "Binary file · no text
     preview", "This file is no longer available", or "Cannot open this file
     (binary, larger than 1 MiB, or unreadable)".
@@ -307,7 +322,7 @@ the project's folder while a file tab is in front.
     Refresh on `watchFolder(cwd)` (local) and `cx.timer.every(10000)`.
     Opened folders are remembered per location.
   - **`{ file, on }` → a file tab**, drawn by `viewer.js`: `readTextFile(file, { on })`,
-    `EditorState.new({ language, readonly: true, … })` + `Editor.new(state)`
+    `EditorState.new({ language, readonly: <not editable>, … })` + `Editor.new(state)`
     for code, `TextView.markdown(id, text).selectable(true)` for Markdown;
     `watchFolder(parent folder)` locally, a 10 s timer remotely. The
     `EditorState` is released on reload and in `close()`.
@@ -342,12 +357,17 @@ the project's folder while a file tab is in front.
   in shared `workspace.panels`: Herdr's tab bar remembers the panel per
   space but restores only the ids listed there (Files and Changes unless the
   person changed it). That list is shared by every layout.
-- Herdr's `image()` only loads files inside its own folder, and doesn't
-  scale a picture up or fit it to a box (`size_full()` stretches and crops;
-  sizing an SVG from its viewBox and the box measured with `on_size_change`
-  showed no change in a first try, cause not found yet). So the viewer copies the picture to
-  `~/.config/herdr-app/data/files-tabs/images/<random>.<ext>`, shows that
-  copy at its own size at most, makes a new copy on every change (a new name,
+- Herdr's `image()` only loads files inside its own folder, and doesn't fit
+  itself to a box: given a width and height it takes the width and follows
+  its own proportions, so a square picture in a wide box overflows. The
+  viewer fits it itself: the picture area's size from `on_size_change`
+  (unzoomed, so divided by `settings().zoom`: `w()`/`h()` are zoomed), the
+  picture's own size from `sips -g pixelWidth -g pixelHeight` on macOS,
+  else the last "W x H" in `file -b` (an SVG: its width/height, else its
+  viewBox), then `image().w(w * s).h(h * s)` with `s` the smaller of the two
+  ratios. Without a size it falls back to its own size, at most the tab's.
+  It copies the picture to
+  `~/.config/herdr-app/data/files-tabs/images/<random>.<ext>`, makes a new copy on every change (a new name,
   so no cached old picture), deletes it in `close()`, and at its first start
   deletes copies older than a day (closing a whole space doesn't call
   `close()`).
@@ -403,6 +423,9 @@ the project's folder while a file tab is in front.
 - With a file tab in front, the panel still lists the project's folder, not
   the home folder.
 - Editing the open file on disk updates the tab within a second or two.
+- Typing in a file tab shows "Edited"; ⌘S writes the file and "Edited" goes.
+  Changing the file in a terminal while the tab has edits, then ⌘S, shows
+  "Changed on disk" and writes nothing until Overwrite.
 - With the panel clicked, ↓/↑ move the selection, Enter renames on macOS
   (opens elsewhere), ⌘C then ⌘V on a folder pastes a copy into it, and typing
   `menu` lists `mods/files-tabs/menu.js`; Esc brings the tree back.

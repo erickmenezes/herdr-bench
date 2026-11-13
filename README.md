@@ -5,8 +5,10 @@ with beside your agents.
 
 - **Files in tabs.** Double-click a file in the Files panel and it opens in its own
   tab: code with syntax colors and line numbers, Markdown rendered, pictures
-  (PNG, JPEG, GIF, WebP, SVG…) as pictures. Clicking it again goes back to
-  its tab. Files and folders get colour icons (VS Code's Material Icon Theme,
+  (PNG, JPEG, GIF, WebP, SVG…) fitted to the tab. Text files on this computer are
+  editable: ⌘S saves (Ctrl+S on Linux and Windows), and if the file changed on
+  disk since, it asks (Reload or Overwrite) instead of writing over it. Unsaved
+  edits survive a restart. Clicking it again goes back to its tab. Files and folders get colour icons (VS Code's Material Icon Theme,
   through the bundled Better Icons mod), each file shows its size, and a
   double-click on a folder shows it as the root, with buttons for up one
   level and back to the terminal's folder. A file tab follows its file when

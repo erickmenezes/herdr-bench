@@ -116,8 +116,9 @@ export default class Scratchpad extends View {
       .on_click((_e, cx) => this.save(again, cx)).child(label);
     return v_flex().id("root").size_full().min_h(0).overflow_hidden().bg(t.background).text_color(t.foreground)
       .on_key_down((e, cx) => {
-        if (e.keystroke === "cmd-s") this.save(false, cx);
-        else if (e.keystroke === "cmd-shift-s") this.save(true, cx);
+        const cmd = window()?.platform === "macos" ? "cmd" : "ctrl"; // Ctrl+S off macOS
+        if (e.keystroke === `${cmd}-s`) this.save(false, cx);
+        else if (e.keystroke === `${cmd}-shift-s`) this.save(true, cx);
       })
       .child(h_flex().flex_none().items_center().gap(4).px(8).h(30).border_b_1().border_color(t.border)
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.dim)
