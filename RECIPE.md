@@ -107,6 +107,16 @@ the project's folder while a file tab is in front.
 - Move to Trash… opens a dialog like Herdr's confirm: "Move “name” to the
   Trash?", with the path, Enter or Move to Trash. It only ever moves to a
   Trash; with none on that machine it says so and deletes nothing.
+- Selection: a click selects that row (`selected` background) and does what
+  it did before; ⌘-click adds or removes a row; ⇧-click selects the range
+  from the last clicked row. Right-click a selected row with others
+  selected: Cut N Items, Copy N Items, Copy N Paths (one per line), Move N
+  Items to Trash… ("Move 3 items to the Trash?" with their names).
+  Right-click a row outside the selection selects just that row.
+- A rename, or a cut pasted elsewhere, moves open tabs along: the tab of a
+  renamed file takes the new name, a tab inside a renamed or moved folder
+  keeps working, also after a restart, and clicking the file under its new
+  name goes back to that same tab.
 - Click a folder: it opens or closes in place. Click a file: a new tab opens
   in the shown space, named after the file, and becomes the shown tab.
 - Click a file that already has a tab: that tab is shown again; no second tab.
@@ -121,6 +131,13 @@ the project's folder while a file tab is in front.
   watched; files on another machine are re-read every 10 s). "Source" /
   "Preview" switches a Markdown tab between raw text and rendered text.
 - Close a file tab like any tab. Agent statuses play no part in this mod.
+- A window that reaches 80%, then 100%, posts one notification each:
+  "Claude session limit at 83%", "<Account> (<plan>) · resets in 1h 12m",
+  `warning` at 80 and `error` at 100 (a jump straight to 100 says only
+  100). Only fresh snapshots (30 minutes) of windows that haven't reset;
+  shown ones are kept in shared `"claude-limits.alerted"` as
+  `<account>:<window>:<resets_at>:<threshold>` and dropped once that window
+  resets, so a restart doesn't repeat them.
 - Limits update within a second of a Claude session's status line running
   (the panel watches the folder), and every 30 s the countdowns move on. A
   window whose reset time has passed shows 0% and "reset". A snapshot older
@@ -178,7 +195,7 @@ the project's folder while a file tab is in front.
     `exec("sh", ["-c", 'for f in "$1"/*.json; do [ -f "$f" ] && cat "$f" && echo; done', "limits", dir])`,
     sorted by account; reloads on `watchFolder(dir)` and `cx.timer.every(30000)`.
 - One mod folder, `mods/files-tabs/`: `main.js`, `viewer.js`, `menu.js`,
-  `dialog.js`, `file-icons.js`, `mod.json` (`"place": "none"`: it shows only where the
+  `dialog.js`, `moves.js`, `file-icons.js`, `mod.json` (`"place": "none"`: it shows only where the
   layout puts it), and six icons (`chevron-down.svg`, `chevron-right.svg`,
   `file.svg`, `folder.svg`, `up.svg`, `home.svg`).
 - Sizes come from the same `sh` listing as the tree, with no extra call: it
@@ -207,6 +224,20 @@ the project's folder while a file tab is in front.
   exit 5) and a missing source (exit 4); a cut is `mv -n` unless the name is
   taken (exit 3); a copy finds a free "stem copy[ n].ext" and runs
   `cp -R -p`.
+- `moves.js`: shared `"files-tabs.open"` ("<machine>|<path>" → tab id, the
+  tab to go back to) and `"files-tabs.moved"` (old "<machine>|<path>" → new
+  path, the newest 100). `recordMove` (after a rename and after each cut
+  item pasted) first drops moves away from the new path or from inside it,
+  so a rename back (a → b → a) doesn't loop, then re-keys the open tabs at
+  or below the old path and runs `tab.rename` for the tab of the file
+  itself. A file tab resolves its props' path through the moves, following
+  the longest matching folder, on start and on every render; a new
+  extension changes how it shows the file.
+- The files' clipboard holds several paths (`{ paths, on, mode }`; an older
+  `{ path }` still reads). Paste runs each in turn, a failure doesn't stop
+  the rest, a cut keeps only what didn't move; the trash command takes every
+  path at once (`/usr/bin/trash "$@"`, `gio trash -- "$@"`, `trash-put --
+  "$@"`, Finder one by one).
 - Show as Root: a module-level map from the terminal location (the JSON of
   `{cwd, on, space}`) to a pinned folder; the panel's folder and its cache
   key come from that pinned folder when there is one. Double-click comes

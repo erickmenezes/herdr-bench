@@ -9,14 +9,17 @@ with beside your agents.
   its tab. Files and folders get colour icons (VS Code's Material Icon Theme,
   through the bundled Better Icons mod), each file shows its size, and a
   double-click on a folder shows it as the root, with buttons for up one
-  level and back to the terminal's folder.
+  level and back to the terminal's folder. A file tab follows its file when
+  it's renamed or moved.
 - **A right-click menu** on every row: Open, Show as Root, New Terminal Here,
   Open with Default App, Reveal in Finder, Cut, Copy, Paste, Copy Path, Copy
   Relative Path, New Folder…, Rename… and Move to Trash… (never a plain
-  delete). Right-click the empty space for New Folder… and Paste at the top.
+  delete). ⌘-click or ⇧-click selects several rows, to cut, copy, copy the
+  paths of or trash them together. Right-click the empty space for New
+  Folder… and Paste at the top.
 - **Claude's limits.** Above Agents, a Limits panel shows how much of
   Claude's session (5-hour) and weekly limits you've used, per account, with
-  each account's plan.
+  each account's plan, and a notification when one reaches 80% and 100%.
 - **A Scratchpad.** A note button after Files in the tab bar (or
   `cmd-shift-n`) opens an empty tab for quick plain-text notes that stays
   until you close it.

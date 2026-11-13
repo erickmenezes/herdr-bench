@@ -4,6 +4,7 @@ import { div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { readTextFile, watchFolder, theme, settings, home, appHome, exec } from "herdr";
 import { followFileIcons, fileIcon, isLight } from "./file-icons.js";
+import { resolveMove } from "./moves.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const MARKDOWN = new Set(["md", "markdown", "mdx"]);
@@ -22,13 +23,11 @@ const parent = (file) => file.replace(/[\\/][^\\/]*$/, "") || "/";
 
 export default class Viewer {
   constructor(p, cx) {
-    this.file = p.file;
     this.on = p.on ?? null;
-    this.ext = extension(this.file);
-    this.markdown = MARKDOWN.has(this.ext);
-    this.image = IMAGES.has(this.ext);
-    this.raster = this.image && this.ext !== "svg"; // no text to show
-    this.source = !(this.markdown || this.image);
+    // The tab's props keep the path it was opened with; a rename or move since then
+    // (moves.js) tells where the file is now, also after a restart.
+    this.file = resolveMove(this.on, p.file);
+    this.kind();
     this.copy = null;
     if (!swept) {
       // Copies a crash or a quit left behind.
@@ -43,16 +42,37 @@ export default class Viewer {
       // A file on another machine can't be watched: check now and then.
       cx.timer.every(10000, (cx) => this.load(cx));
     } else {
-      const dir = parent(this.file);
       cx.spawn(async (cx) => {
         try {
           for (;;) {
+            // The folder of the file as it is now: a move changes it.
+            const dir = parent(this.file);
             const changed = await watchFolder(dir);
             if (changed.some((p) => p === this.file || p === dir)) this.load(cx);
           }
         } catch { /* folder gone: keep the last text */ }
       });
     }
+  }
+
+  // What the file is, from its extension; a rename to another type changes it.
+  kind() {
+    this.ext = extension(this.file);
+    this.markdown = MARKDOWN.has(this.ext);
+    this.image = IMAGES.has(this.ext);
+    this.raster = this.image && this.ext !== "svg"; // no text to show
+    this.source = !(this.markdown || this.image);
+  }
+
+  // Follows a rename or move recorded since the last look.
+  follow(cx) {
+    const now = resolveMove(this.on, this.file);
+    if (now === this.file) return;
+    const ext = this.ext;
+    this.file = now;
+    if (extension(now) !== ext) { this.kind(); this.text = null; this.code?.release(); this.code = null; }
+    this.error = null;
+    this.load(cx);
   }
 
   load(cx) {
@@ -104,7 +124,8 @@ export default class Viewer {
     this.copy = null;
   }
 
-  render(_cx) {
+  render(cx) {
+    this.follow(cx);
     const t = theme();
     const h = home();
     const shown = this.file.startsWith(h + "/") ? "~" + this.file.slice(h.length) : this.file;

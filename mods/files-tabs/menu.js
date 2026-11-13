@@ -1,16 +1,20 @@
 // The row menu of the Files panel: a popup copy of this mod with props { menu }.
-// menu: { path, relative, dir, on, location, background }; background is a right-click
-// on the tree's empty space (path is then the panel's root). Opening a file, Show as
+// menu: { path, relative, dir, on, location, background, items }; background is a
+// right-click on the tree's empty space (path is then the panel's root); items, when
+// several rows are selected, is each one's { path, relative, dir }. Opening a file, Show as
 // Root and reloading are the panel's to do, so those go to it through shared state
 // (REQUEST in main.js); the rest runs here. ↑/↓ move, Enter runs, Esc closes.
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, exec, window, notify, shared, setShared } from "herdr";
+import { recordMove } from "./moves.js";
 
 const REQUEST = "files-tabs.request";
-// What Cut or Copy picked: { path, on, mode: "cut" | "copy", dir }. The files' own
+// What Cut or Copy picked: { paths, on, mode: "cut" | "copy" }. The files' own
 // clipboard, separate from the text one, shared by every copy of the mod.
 export const CLIPBOARD = "files-tabs.clipboard";
+// The picked paths; an older single pick was { path }.
+export const clipPaths = (clip) => clip?.paths ?? (clip?.path ? [clip.path] : []);
 const mac = () => window()?.platform === "macos";
 const nameOf = (path) => path.split("/").pop();
 const parentOf = (path) => path.replace(/\/[^/]*$/, "") || "/";
@@ -35,8 +39,14 @@ const PASTE = [
 // New Folder…, Rename… and Move to Trash… open a dialog (dialog.js) that asks first.
 export function menuItems(m) {
   const here = !m.on && mac(), unix = window()?.platform !== "windows";
-  const clip = shared(CLIPBOARD);
-  const paste = clip ? [[m.dir && !m.background ? `Paste into “${nameOf(m.path)}”` : "Paste", "paste"]] : [];
+  const clip = shared(CLIPBOARD), count = clipPaths(clip).length;
+  const what = count > 1 ? ` ${count} Items` : "";
+  const paste = count ? [[m.dir && !m.background ? `Paste${what} into “${nameOf(m.path)}”` : `Paste${what}`, "paste"]] : [];
+  if (m.items) return unix ? [
+    [`Cut ${m.items.length} Items`, "cut"], [`Copy ${m.items.length} Items`, "copy"],
+    ["-"], [`Copy ${m.items.length} Paths`, "path"],
+    ["-"], [`Move ${m.items.length} Items to Trash…`, "trash"],
+  ] : [];
   if (m.background) return [
     ...(unix ? [["New Folder…", "mkdir"], ...paste, ["-"]] : []),
     ...(here ? [["Reveal in Finder", "reveal"]] : []),
@@ -62,18 +72,26 @@ export function ask(location, kind, path) {
   setShared(REQUEST, { id: `${Date.now()}-${Math.random()}`, at: Date.now(), location, kind, path });
 }
 
+// Each picked item in turn; one that fails doesn't stop the others. A cut item that
+// moved is recorded, so its open tab follows it.
 async function paste(m) {
-  const clip = shared(CLIPBOARD), into = folderOf(m);
-  if (!clip) return;
+  const clip = shared(CLIPBOARD), into = folderOf(m), paths = clipPaths(clip);
+  if (!paths.length) return;
   if ((clip.on ?? null) !== (m.on ?? null)) {
-    notify({ title: "Can't paste between machines yet", body: `${nameOf(clip.path)} is on ${clip.on ?? "this computer"}, this folder on ${m.on ?? "this computer"}.`, level: "warning" });
+    notify({ title: "Can't paste between machines yet", body: `Cut or copied on ${clip.on ?? "this computer"}, this folder is on ${m.on ?? "this computer"}.`, level: "warning" });
     return;
   }
-  const r = await exec("sh", ["-c", PASTE, "paste", clip.path, into, clip.mode], { on: m.on }).catch((e) => ({ code: -1, stderr: String(e) }));
-  const what = nameOf(clip.path);
-  const errors = { 3: `“${what}” already exists in “${nameOf(into)}”.`, 4: `“${what}” is no longer there.`, 5: "A folder can't go inside itself." };
-  if (r.code !== 0) { notify({ title: "Couldn't paste", body: errors[r.code] ?? (r.stderr?.trim().split("\n").pop() || ""), level: "error" }); return; }
-  if (clip.mode === "cut") setShared(CLIPBOARD, null);
+  const failed = [], left = [];
+  for (const src of paths) {
+    const r = await exec("sh", ["-c", PASTE, "paste", src, into, clip.mode], { on: m.on }).catch((e) => ({ code: -1, stderr: String(e) }));
+    const name = nameOf(src);
+    const errors = { 3: `“${name}” already exists in “${nameOf(into)}”.`, 4: `“${name}” is no longer there.`, 5: `“${name}” can't go inside itself.` };
+    if (r.code !== 0) { failed.push(errors[r.code] ?? `“${name}”: ${r.stderr?.trim().split("\n").pop() || "failed"}`); left.push(src); continue; }
+    if (clip.mode === "cut") recordMove(m.on, src, `${into}/${name}`);
+  }
+  // A cut keeps only what didn't move; a copy stays for another paste.
+  if (clip.mode === "cut") setShared(CLIPBOARD, left.length ? { paths: left, on: clip.on ?? null, mode: "cut" } : null);
+  if (failed.length) notify({ title: failed.length === paths.length ? "Couldn't paste" : `Pasted ${paths.length - failed.length} of ${paths.length}`, body: failed.join(" "), level: "error" });
   ask(m.location, m.background || !m.dir ? "refresh" : "expand", into);
 }
 
@@ -89,21 +107,26 @@ export class MenuView {
     const m = this.m;
     closeOverlay(props()?.overlay);
     const fail = (what) => () => notify({ title: `Couldn't ${what}`, level: "error" });
+    const items = m.items ?? [{ path: m.path, relative: m.relative, dir: m.dir }];
     const dialog = (kind, height) => openOverlay({ mod: "files-tabs", kind: "dialog", width: 440, height,
-      props: { dialog: { kind, path: kind === "mkdir" ? folderOf(m) : m.path, dir: m.dir, on: m.on, location: m.location, expand: kind === "mkdir" && m.dir && !m.background } } });
+      props: { dialog: { kind, path: kind === "mkdir" ? folderOf(m) : m.path, paths: items.map(i => i.path), dir: m.dir, on: m.on, location: m.location, expand: kind === "mkdir" && m.dir && !m.background } } });
     switch (action) {
       case "open": ask(m.location, "open", m.path); break;
       case "root": ask(m.location, "root", m.path); break;
       case "terminal": run("terminal.open", { folder: m.path, place: "tab" }); break;
       case "default": exec("open", [m.path]).catch(fail("open it")); break;
       case "reveal": exec("open", m.background ? [m.path] : ["-R", m.path]).catch(fail("show it in Finder")); break;
-      case "cut": case "copy": setShared(CLIPBOARD, { path: m.path, on: m.on ?? null, mode: action, dir: m.dir }); break;
+      case "cut": case "copy": setShared(CLIPBOARD, { paths: items.map(i => i.path), on: m.on ?? null, mode: action }); break;
       case "paste": paste(m); break;
-      case "path": copyText(m.path).then(() => notify({ title: "Path copied", body: m.path, timeout: 2000 })).catch(fail("copy the path")); break;
+      case "path": {
+        const text = items.map(i => i.path).join("\n");
+        copyText(text).then(() => notify({ title: items.length > 1 ? `${items.length} paths copied` : "Path copied", body: items.length > 1 ? "" : text, timeout: 2000 })).catch(fail("copy the path"));
+        break;
+      }
       case "relative": copyText(m.relative).then(() => notify({ title: "Relative path copied", body: m.relative, timeout: 2000 })).catch(fail("copy the path")); break;
       case "mkdir": dialog("mkdir", 196); break;
       case "rename": dialog("rename", 196); break;
-      case "trash": dialog("trash", 176); break;
+      case "trash": dialog("trash", items.length > 1 ? 200 : 176); break;
     }
   }
 

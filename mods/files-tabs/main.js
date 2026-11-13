@@ -6,8 +6,9 @@ import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, window, run, shared, setShared, props, openOverlay } from "herdr";
 import Viewer from "./viewer.js";
-import { menuItems, MenuView, CLIPBOARD } from "./menu.js";
+import { menuItems, MenuView, CLIPBOARD, clipPaths } from "./menu.js";
 import { DialogView } from "./dialog.js";
+import { OPEN_TABS } from "./moves.js";
 // Colour icons from the Better Icons mod when it is installed; else the plain ones below.
 import { followFileIcons, fileIcon, isLight } from "./file-icons.js";
 
@@ -56,7 +57,6 @@ const headerButton = (id, icon, tip, action) => {
     .child(svg(icon).size(14));
 };
 const PER_FOLDER = 500, TOTAL = 5000;
-const OPEN_TABS = "files-tabs.open"; // shared: "<machine>|<file>" -> tab id
 // The row menu is another copy of this mod (a popup): what it asks of the panel comes
 // through shared state, { id, at, location, kind: "root" | "open" | "refresh" | "expand", path },
 // acted on once. "expand" reloads with that folder (and the ones above it) open.
@@ -104,6 +104,9 @@ export default class FilesTabs extends View {
     followFileIcons(this, cx);
     this.saved = new Map();
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
+    // Selected rows (paths below the root): a click picks one, ⌘-click adds or removes,
+    // ⇧-click picks the range from the last clicked row (the anchor).
+    this.selected = new Set(); this.anchor = null; this.visible = []; this.kinds = new Map();
     this.refresh(cx);
     cx.timer.every(10000, cx => this.refresh(cx));
   }
@@ -138,6 +141,7 @@ export default class FilesTabs extends View {
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.base = base ?? null; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.watched = null; this.error = null; this.limited = false;
+      this.selected = new Set(); this.anchor = null;
       this.loading = false;
     }
     if (!cwd || this.loading) return;
@@ -217,18 +221,17 @@ export default class FilesTabs extends View {
 
   rows(prefix, depth, out, t, light = isLight(t.background), clip = shared(CLIPBOARD)) {
     if (out.length >= TOTAL || depth > 40) return out;
-    const cut = clip?.mode === "cut" && (clip.on ?? null) === (this.on ?? null) ? clip.path : null;
+    const cut = new Set(clip?.mode === "cut" && (clip.on ?? null) === (this.on ?? null) ? clipPaths(clip) : []);
     for (const entry of this.entries.get(prefix) ?? []) {
       if (out.length >= TOTAL) break;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.marks[`${this.root}/${path}`];
-      out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
-        .when(cut === `${this.root}/${path}`, el => el.opacity(0.5)) // cut, waiting for a paste
-        .on_click((e, cx) => !entry.dir ? this.open(path) : e.click_count >= 2 ? this.showAsRoot(`${this.root}/${path}`, cx) : this.toggle(path, cx))
-        .on_mouse_down("right", (_e, cx) => {
-          cx.stop_propagation();
-          const menu = { path: `${this.root}/${path}`, relative: path, dir: entry.dir, on: this.on, location: JSON.stringify(location()) };
-          openOverlay({ mod: "files-tabs", kind: "popup", width: 230, height: 32 * menuItems(menu).length + 24, props: { menu } });
-        })
+      this.visible.push(path); this.kinds.set(path, entry.dir);
+      out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer()
+        .when(this.selected.has(path), el => el.bg(t.selected))
+        .hover(s => s.bg(t.hover))
+        .when(cut.has(`${this.root}/${path}`), el => el.opacity(0.5)) // cut, waiting for a paste
+        .on_click((e, cx) => this.click(path, entry, e, cx))
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.rightClick(path, entry, cx); })
         .child(entry.dir ? svg(`mods/files-tabs/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child((icon => icon ? image(icon).w(14).h(14).flex_none() : svg(`mods/files-tabs/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))(
           fileIcon(this.fileIcons, `${this.root}/${path}`, { dir: entry.dir, open, light })))
@@ -238,6 +241,34 @@ export default class FilesTabs extends View {
       if (entry.dir && open) this.rows(path, depth + 1, out, t, light, clip);
     }
     return out;
+  }
+
+  click(path, entry, e, cx) {
+    const m = e.modifiers ?? {};
+    if (m.platform) {
+      if (this.selected.has(path)) this.selected.delete(path); else this.selected.add(path);
+      this.anchor = path; cx.notify(); return;
+    }
+    if (m.shift && this.anchor && this.visible.includes(this.anchor)) {
+      const a = this.visible.indexOf(this.anchor), b = this.visible.indexOf(path);
+      this.selected = new Set(this.visible.slice(Math.min(a, b), Math.max(a, b) + 1));
+      cx.notify(); return;
+    }
+    this.selected = new Set([path]); this.anchor = path;
+    if (!entry.dir) this.open(path);
+    else if (e.click_count >= 2) this.showAsRoot(`${this.root}/${path}`, cx);
+    else this.toggle(path, cx);
+    cx.notify();
+  }
+
+  // On a selected row the menu acts on every selected row; elsewhere it picks that row.
+  rightClick(path, entry, cx) {
+    if (!this.selected.has(path)) { this.selected = new Set([path]); this.anchor = path; }
+    const items = this.visible.filter(p => this.selected.has(p)).map(p => ({ path: `${this.root}/${p}`, relative: p, dir: this.kinds.get(p) }));
+    const menu = { path: `${this.root}/${path}`, relative: path, dir: entry.dir, on: this.on, location: JSON.stringify(location()),
+      items: items.length > 1 ? items : undefined };
+    openOverlay({ mod: "files-tabs", kind: "popup", width: 230, height: 32 * menuItems(menu).length + 24, props: { menu } });
+    cx.notify();
   }
 
   // Pins a folder in place of the terminal's; null goes back to the terminal's folder.
@@ -290,7 +321,7 @@ export default class FilesTabs extends View {
           const menu = { path: this.root, relative: "", dir: true, on: this.on, location: JSON.stringify(location()), background: true };
           openOverlay({ mod: "files-tabs", kind: "popup", width: 230, height: 32 * menuItems(menu).length + 24, props: { menu } });
         })
-        .children(this.rows("", 0, [], t))
+        .children((this.visible = [], this.kinds = new Map(), this.rows("", 0, [], t)))
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total"))));
   }
