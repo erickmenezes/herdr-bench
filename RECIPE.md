@@ -51,6 +51,13 @@ the project's folder while a file tab is in front.
   "Personal"), and its plan in a small pill (10px, medium, `muted` on
   `raised`, 4px corners), such as "Pro", "Max 5x" or "Team Max 5x". With no saved limits: "No limits yet. They show up once a
   Claude session's status line runs save-limits.sh."
+- **The Scratchpad button**: at the right end of the tab bar, after Files, a
+  26px button with a 15px note icon (`dim`, `hover` background and
+  `foreground` on hover, 6px corners) on the tab bar's `chrome` background
+  and bottom border; its tooltip is "New scratchpad (⌘⇧N)".
+- **A scratchpad tab**: named "Scratchpad", one mod pane with a plain-text
+  editor (13px, your terminal font, no line numbers, soft wrap, 6px padding)
+  on `background`.
 
 ## How it behaves
 
@@ -72,6 +79,10 @@ the project's folder while a file tab is in front.
   (the panel watches the folder), and every 30 s the countdowns move on. A
   window whose reset time has passed shows 0% and "reset". A snapshot older
   than 30 minutes says "as of 2h 5m ago" above its meters.
+- The note button, or `cmd-shift-n`, opens a new scratchpad tab in the shown
+  space and shows it. Each one starts empty; its text is saved on every
+  change and survives restarts and updates while the tab stays open. Closing
+  the tab is the end of that note.
 
 ## Built from
 
@@ -82,7 +93,24 @@ the project's folder while a file tab is in front.
   Keep that id, because the tab bar's Files button selects it. The root also
   has `"preview": "layouts/Files-Tabs.svg"`, the picture Settings shows.
   It also adds a block `limits` (`size: {px: 160}`, `min: 80`, mod
-  `claude-limits`) in `sidebar-lists` between `spaces` and `agents`.
+  `claude-limits`) in `sidebar-lists` between `spaces` and `agents`. And the
+  `tabs` block (still Herdr's own `tabs` mod) goes into a row `tab-bar`
+  (`size: {px: 42}`, `resizable: false`) with `size: {weight: 1}`, followed
+  by a block `scratchpad-button` (`size: {px: 36}`, mod `scratchpad`).
+- One mod folder, `mods/scratchpad/`: `main.js`, `mod.json`
+  (`"place": "none"`, `"overlay": {width: 1, height: 1}`) and `note.svg`.
+  `main.js` default-exports a `View` with three roles, chosen by `props()`:
+  - **`{ id }` → a note tab**: `EditorState.new({ value, font_family,
+    font_size: 13, line_numbers: false, folding: false, soft_wrap: true })`,
+    with the text in `localStorage` under `note:<id>` on every `change`.
+    `close()` saves and `await localStorage.flush()` but doesn't delete it:
+    `close()` also runs when Herdr quits.
+  - **`{ overlay }` → `mod.open:scratchpad`**: closes the overlay and opens a
+    tab, `run("tab.new", { name: "Scratchpad", space: <shown space id>,
+    mod: "scratchpad", props: { id: <new random id> } })`.
+  - **No props → the button** in the layout's block, which opens a tab the
+    same way.
+- `keys.json`: `{"global": {"cmd-shift-n": "mod.open:scratchpad"}}`.
 - One mod folder, `mods/claude-limits/`: `main.js`, `mod.json`
   (`"place": "none"`, `"title": "Limits"`) and `save-limits.sh`.
   - `save-limits.sh` reads the status line's JSON on stdin and, with `jq`,
@@ -133,6 +161,14 @@ the project's folder while a file tab is in front.
 
 ## Watch out
 
+- A block with no `size` in a row takes all of it: the `tabs` block needs
+  `size: {weight: 1}`, or the button block next to it gets no width.
+- The button can't go inside the tab bar's own `+` menu without cloning
+  Herdr's `tabs` and `new-menu` mods, which then stop getting Herdr's fixes.
+  A block beside the tab bar keeps both stock.
+- On Linux and Windows, Herdr's tab bar draws the window buttons at its right
+  end, so the note button sits after them there.
+
 - Claude Code gives the session and weekly limits only to its status line,
   so the panel can't know them unless a status line saves them. Asking
   Anthropic's usage endpoint would mean reading the Claude login from the
@@ -166,8 +202,11 @@ the project's folder while a file tab is in front.
 
 ## Done when
 
-- `herdr-app check ~/.config/herdr-app/mods/files-tabs` and
-  `herdr-app check ~/.config/herdr-app/mods/claude-limits` pass.
+- `herdr-app check` passes for `mods/files-tabs`, `mods/claude-limits` and
+  `mods/scratchpad`.
+- The note button shows after Files at the end of the tab bar; clicking it,
+  or `cmd-shift-n`, opens an empty Scratchpad tab, and its text is still
+  there after restarting Herdr.
 - With the status line line added, `~/.cache/herdr-claude-limits/` has one
   file per account, and the Limits panel shows the same session and weekly
   percentages as Claude Code's own `/usage`.

@@ -4,7 +4,9 @@ A [Herdr](https://herdr.dev) layout: Herdr's own window, except that clicking
 a file in the Files panel opens it in its own tab. Code shows with syntax
 colors and line numbers, and Markdown shows rendered. Clicking the same file
 again goes back to its tab. Above Agents, a Limits panel shows how much of
-Claude's session (5-hour) and weekly limits you've used, per account.
+Claude's session (5-hour) and weekly limits you've used, per account. And a
+note button at the end of the tab bar (or `cmd-shift-n`) opens a Scratchpad:
+an empty tab for quick plain-text notes that stays until you close it.
 
 ![Files in Tabs](preview.png)
 
@@ -17,8 +19,10 @@ Add the Herdr layout at github.com/erickmenezes/herdr-files-tabs
 ```
 
 Or copy `layouts/Files-Tabs.json` and `layouts/Files-Tabs.svg` into
-`~/.config/herdr-app/layouts/`, and `mods/files-tabs/` and
-`mods/claude-limits/` into `~/.config/herdr-app/mods/`. Then pick "Files-Tabs" in Settings → Look.
+`~/.config/herdr-app/layouts/`, and `mods/files-tabs/`, `mods/claude-limits/`
+and `mods/scratchpad/` into `~/.config/herdr-app/mods/`. Add the key in
+`keys.json` (`cmd-shift-n`, a new scratchpad) to your own `keys.json`, unless
+you already use that key. Then pick "Files-Tabs" in Settings → Look.
 `ctrl-shift-l` switches back to your usual layout.
 
 The Limits panel gets its numbers from Claude Code's status line, which is
@@ -35,8 +39,9 @@ panel says so and stays empty.
 
 What it touches: the Files panel runs `sh` (to list folders) and `git status`
 and reads the files you click. The Limits panel runs `sh` to read
-`~/.cache/herdr-claude-limits/`, which `save-limits.sh` writes. Neither
-reaches the network or reads your Claude login.
+`~/.cache/herdr-claude-limits/`, which `save-limits.sh` writes. None of them
+reaches the network or reads your Claude login. Scratchpad notes are kept
+in Herdr's own storage for that mod, not in files.
 
 ## License
 

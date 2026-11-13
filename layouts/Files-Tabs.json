@@ -102,15 +102,35 @@
       "resizable": false,
       "children": [
         {
-          "id": "tabs",
-          "type": "block",
+          "id": "tab-bar",
+          "type": "row",
           "size": {
             "px": 42
           },
-          "window_drag": true,
-          "content": {
-            "mod": "tabs"
-          }
+          "resizable": false,
+          "children": [
+            {
+              "id": "tabs",
+              "type": "block",
+              "window_drag": true,
+              "content": {
+                "mod": "tabs"
+              },
+              "size": {
+                "weight": 1
+              }
+            },
+            {
+              "id": "scratchpad-button",
+              "type": "block",
+              "size": {
+                "px": 36
+              },
+              "content": {
+                "mod": "scratchpad"
+              }
+            }
+          ]
         },
         {
           "id": "work-body",
