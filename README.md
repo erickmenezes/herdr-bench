@@ -22,7 +22,8 @@ with beside your agents.
   each account's plan, and a notification when one reaches 80% and 100%.
 - **A Scratchpad.** A note button after Files in the tab bar (or
   `cmd-shift-n`) opens an empty tab for quick plain-text notes that stays
-  until you close it.
+  until you close it. "Save as…" (⌘⇧S) turns a note into a real file, and
+  ⌘S saves to it again.
 
 ![Workbench](preview.png)
 
@@ -63,7 +64,8 @@ paste a copy, `mv -n` to rename or paste a cut, and
 Linux and SSH machines) to move to the Trash. The Limits panel runs `sh` to read
 `~/.cache/herdr-claude-limits/`, which `save-limits.sh` writes. Those
 don't reach the network or read your Claude login. Scratchpad notes are kept
-in Herdr's own storage for that mod, not in files. Better Icons (about 5 MB of
+in Herdr's own storage for that mod, and only written to a file you pick in the
+system's save dialog (`osascript` on macOS, `zenity` or `kdialog` on Linux). Better Icons (about 5 MB of
 icons) only reads its own folder.
 
 ## License

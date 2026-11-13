@@ -69,7 +69,10 @@ the project's folder while a file tab is in front.
   tooltip "New scratchpad (⌘⇧N)".
 - **A scratchpad tab**: named "Scratchpad", one mod pane with a plain-text
   editor (13px, your terminal font, no line numbers, soft wrap, 6px padding)
-  on `background`.
+  on `background`. Above it, a 30px strip with a bottom `border`: the note's
+  file on the left (`~` for home, "· edited" when it differs from what was
+  saved; "Not saved to a file" before), then "Save" (once it has a file) and
+  "Save as…", 12px `dim` text buttons with a `hover` background.
 
 ## How it behaves
 
@@ -145,7 +148,13 @@ the project's folder while a file tab is in front.
 - The note button, or `cmd-shift-n`, opens a new scratchpad tab in the shown
   space and shows it. Each one starts empty; its text is saved on every
   change and survives restarts and updates while the tab stays open. Closing
-  the tab is the end of that note.
+  the tab is the end of that note, unless it was saved to a file.
+- "Save as…" (⌘⇧S, or ⌘S before the note has a file) opens the system's save
+  dialog in the space's folder (home for an SSH space), named after the
+  note's first line (`.md`, "Note.md" when empty). The note is written there,
+  the tab takes the file's name, and later ⌘S writes to the same file. If
+  something else changed that file since, Save refuses with a notification
+  instead of overwriting it.
 
 ## Built from
 
@@ -170,7 +179,13 @@ the project's folder while a file tab is in front.
     font_size: 13, line_numbers: false, folding: false, soft_wrap: true })`,
     with the text in `localStorage` under `note:<id>` on every `change`.
     `close()` saves and `await localStorage.flush()` but doesn't delete it:
-    `close()` also runs when Herdr quits.
+    `close()` also runs when Herdr quits. The linked file is under `file:<id>`.
+    The dialog is `osascript` `choose file name` on macOS, else `zenity
+    --file-selection --save --confirm-overwrite`, else `kdialog
+    --getsavefilename` (`exec` with a 10-minute timeout); the file is written
+    with `writeTextFile(path, text, expected)`, where `expected` is the file as
+    the dialog found it, or the text this note last wrote (so a changed file
+    rejects). Keys: `on_key_down` on the tab's root, `cmd-s` and `cmd-shift-s`.
   - **`{ overlay }` → `mod.open:scratchpad`**: closes the overlay and opens a
     tab, `run("tab.new", { name: "Scratchpad", space: <shown space id>,
     mod: "scratchpad", props: { id: <new random id> } })`.
@@ -347,7 +362,8 @@ the project's folder while a file tab is in front.
 - `herdr-app check` passes for every folder in `mods/`.
 - The note button shows after Files at the end of the tab bar. Clicking it,
   or `cmd-shift-n`, opens an empty Scratchpad tab, and its text is still
-  there after restarting Herdr.
+  there after restarting Herdr. "Save as…" writes it to the chosen file and
+  renames the tab; ⌘S after an edit saves again.
 - With the status line line added, `~/.cache/herdr-claude-limits/` has one
   file per account, and the Limits panel shows the same session and weekly
   percentages as Claude Code's own `/usage`.
