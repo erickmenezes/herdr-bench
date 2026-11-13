@@ -45,9 +45,10 @@ the project's folder while a file tab is in front.
   in `muted`, the percentage (medium; `foreground` under 50%, else the bar's
   color) and "resets in 1h 12m" on the right (11px, `dim`); under them a 4px
   bar on `raised`, filled to the percentage in `accent` under 50%, `ansi3`
-  under 80%, `blocked` from 80%. With more than one account, each gets its
-  name above its meters, after Herdr's 13px Claude icon
-  (`image("icons/claude.svg")`, sized with `.w()`/`.h()`) (`~/.claude` → "Claude", `~/.claude-personal` →
+  under 80%, `blocked` from 80%. Each account gets a row above its meters:
+  Herdr's 13px Claude icon (`image("icons/claude.svg")`, sized with
+  `.w()`/`.h()`), its name, and its plan in a small pill (10px, medium,
+  `muted` on `raised`, 4px corners), such as "Pro" or "Max 5x" (`~/.claude` → "Claude", `~/.claude-personal` →
   "Personal"). With no saved limits: "No limits yet. They show up once a
   Claude session's status line runs save-limits.sh."
 
@@ -85,11 +86,15 @@ the project's folder while a file tab is in front.
 - One mod folder, `mods/claude-limits/`: `main.js`, `mod.json`
   (`"place": "none"`, `"title": "Limits"`) and `save-limits.sh`.
   - `save-limits.sh` reads the status line's JSON on stdin and, with `jq`,
-    writes `{account, updated, rate_limits}` on one line to
+    writes `{account, plan, updated, rate_limits}` on one line to
     `~/.cache/herdr-claude-limits/<account>.json`, where the account is the
     basename of `CLAUDE_CONFIG_DIR` (default `~/.claude`) without its dot. It
     rewrites only when `rate_limits` changed or the file is a minute old,
-    through a temp file and `mv`. `rate_limits` is what Claude Code passes:
+    through a temp file and `mv`. `plan` comes from that folder's
+    `.claude.json` (else `~/.claude.json`), `oauthAccount`:
+    `organizationType` without `claude_`, capitalized, plus the `5x`/`20x`
+    ending of `organizationRateLimitTier` (`claude_max` +
+    `default_claude_max_5x` → "Max 5x", `claude_pro` → "Pro"); "" if unknown. `rate_limits` is what Claude Code passes:
     `five_hour` and `seven_day`, each `{used_percentage, resets_at}` (Unix
     seconds).
   - `main.js` default-exports a `View`: it reads every snapshot with one

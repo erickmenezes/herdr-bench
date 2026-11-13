@@ -61,7 +61,6 @@ export default class Limits extends View {
     const t = theme();
     const now = Date.now() / 1000;
     const accounts = this.accounts ?? [];
-    const many = accounts.length > 1;
     return v_flex().id("limits").size_full().min_h(0).bg(t.chrome).border_t(1).border_color(t.border).text_size(13).text_color(t.foreground)
       .child(h_flex().px(16).h(41).pt(14).pb(5).flex_none().items_center()
         .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Limits")))
@@ -71,9 +70,12 @@ export default class Limits extends View {
         .children(accounts.map((a) => {
           const age = now - (a.updated ?? 0);
           return v_flex().id(`limits-${a.account}`).gap(8)
-            .when(many || age > STALE, (el) => el.child(h_flex().items_center().gap(6).text_size(11)
-              .when(many, (el) => el.child(image("icons/claude.svg").w(13).h(13).flex_none()).child(div().font_medium().text_color(t.muted).child(label(a.account))))
-              .when(age > STALE, (el) => el.child(div().text_color(t.dim).child(`as of ${span(age)} ago`)))))
+            .child(h_flex().items_center().gap(6).text_size(11)
+              .child(image("icons/claude.svg").w(13).h(13).flex_none())
+              .child(div().font_medium().text_color(t.muted).child(label(a.account)))
+              .when(Boolean(a.plan), (el) => el.child(div().flex_none().px(5).h(16).rounded(4).bg(t.raised)
+                .text_size(10).font_medium().text_color(t.muted).flex().items_center().child(a.plan)))
+              .when(age > STALE, (el) => el.child(div().flex_1().min_w(0).truncate().text_right().text_color(t.dim).child(`as of ${span(age)} ago`))))
             .children(WINDOWS.map(([key, name]) => this.meter(t, `limits-${a.account}-${key}`, name, a.rate_limits[key], now)));
         })));
   }
