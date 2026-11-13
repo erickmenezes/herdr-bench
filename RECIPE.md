@@ -1,4 +1,4 @@
-# Workbench
+# Bench
 
 Herdr's own window (the `main` layout), with three additions: a Files panel
 whose files open in their own tabs, a Limits panel with Claude's session and
@@ -10,7 +10,7 @@ rendered (with a Source button to see the raw text). Clicking the same file
 again goes back to its tab instead of opening another. The panel keeps showing
 the project's folder while a file tab is in front.
 
-![Workbench](preview.png)
+![Bench](preview.png)
 
 ## What you see
 
@@ -199,12 +199,12 @@ the project's folder while a file tab is in front.
 
 ## Built from
 
-- One layout file, `layouts/Workbench.json`: a clone of Herdr's
+- One layout file, `layouts/Bench.json`: a clone of Herdr's
   `main` layout (`cloned_from: {name: "main", version: "0.1.13"}`) with
   one change: the block with id `files` (in the right panel's stack
   `panel-body`) has `content.mod` set to `files-tabs` instead of `files`.
   Keep that id, because the tab bar's Files button selects it. The root also
-  has `"preview": "layouts/Workbench.svg"`, the picture Settings shows.
+  has `"preview": "layouts/Bench.svg"`, the picture Settings shows.
   It also adds a block `limits` (`size: {px: 160}`, `min: 80`, mod
   `claude-limits`) in `sidebar-lists` between `spaces` and `agents`. The
   `tabs` block (still Herdr's own `tabs` mod) goes into a row `tab-bar`
@@ -382,7 +382,7 @@ the project's folder while a file tab is in front.
 
 - Settings → Look labels a layout you add with its file name, exactly as
   written, and names may only use letters, digits, `-` and `_` (no spaces),
-  so the file is `Workbench.json`.
+  so the file is `Bench.json`.
 - It has to ship as a layout. Herdr's own layouts are read-only: a mod with
   `"place": "right"` is never docked into `main` (Herdr doesn't even mark
   it seen), so on stock Herdr a mod alone shows nothing.
@@ -413,8 +413,8 @@ the project's folder while a file tab is in front.
 - With the status line line added, `~/.cache/herdr-claude-limits/` has one
   file per account, and the Limits panel shows the same session and weekly
   percentages as Claude Code's own `/usage`.
-- Settings → Look shows "Workbench" with its preview; with it chosen
-  (or after `layout.switch {"name":"Workbench"}`), the tab bar's Files
+- Settings → Look shows "Bench" with its preview; with it chosen
+  (or after `layout.switch {"name":"Bench"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.
 - Double-clicking a `.js` file opens a tab named after it, with line numbers and
   syntax colors; double-clicking it again in the panel shows that same tab.

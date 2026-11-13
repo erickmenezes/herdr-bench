@@ -1,4 +1,4 @@
-# Workbench
+# Bench
 
 A [Herdr](https://herdr.dev) layout: Herdr's own window, with more to work
 with beside your agents.
@@ -34,23 +34,23 @@ with beside your agents.
   until you close it. "Save as…" (⌘⇧S) turns a note into a real file, and
   ⌘S saves to it again.
 
-![Workbench](preview.png)
+![Bench](preview.png)
 
 ## Install
 
 Give your agent this line:
 
 ```
-Add the Herdr layout at github.com/erickmenezes/herdr-workbench
+Add the Herdr layout at github.com/erickmenezes/herdr-bench
 ```
 
-Or copy `layouts/Workbench.json` and `layouts/Workbench.svg` into
+Or copy `layouts/Bench.json` and `layouts/Bench.svg` into
 `~/.config/herdr-app/layouts/`, and the five folders in `mods/`
 (`files-tabs`, `better-icons`, `claude-limits`, `scratchpad`, `tab-bar-extras`)
 into `~/.config/herdr-app/mods/`. If you already have Better Icons installed,
 keep yours: other mods find it by the same name. Add the key in
 `keys.json` (`cmd-shift-n`, a new scratchpad) to your own `keys.json`, unless
-you already use that key. Then pick "Workbench" in Settings → Look.
+you already use that key. Then pick "Bench" in Settings → Look.
 `ctrl-shift-l` switches back to your usual layout.
 
 The Limits panel gets its numbers from Claude Code's status line, which is
