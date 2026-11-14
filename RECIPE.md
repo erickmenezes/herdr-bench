@@ -1,9 +1,10 @@
 # Bench
 
-Herdr's own window (the `main` layout), with three additions: a Files panel
+Herdr's own window (the `main` layout), with four additions: a Files panel
 whose files open in their own tabs, a Limits panel with Claude's session and
-weekly limits above Agents, and a Scratchpad button after Files in the tab
-bar. In the Files panel, double-clicking a file opens it in its own tab instead of
+weekly limits above Agents, a Scratchpad button after Files in the tab
+bar, and a Git Graph button beside it that shows the repository's history
+as a VS Code-style graph in a tab. In the Files panel, double-clicking a file opens it in its own tab instead of
 a preview squeezed into the panel. The tab is named after the file
 and shows it, editable when it's text on this computer: code with syntax colors and line numbers, Markdown
 rendered (with a Source button to see the raw text). Clicking the same file
@@ -79,9 +80,54 @@ the project's folder while a file tab is in front.
   `raised`, 4px corners), such as "Pro", "Max 5x" or "Team Max 5x". With no saved limits: "No limits yet. They show up once a
   Claude session's status line runs save-limits.sh."
 - **After the tab bar's Files button**, on the tab bar's `chrome`
-  background and bottom border: a 26px note button with a 15px note icon
-  (`dim`, `hover` background and `foreground` on hover, 6px corners),
-  tooltip "New scratchpad (⌘⇧N)".
+  background and bottom border, 3px apart: a 26px graph button (tooltip "Git
+  Graph") and a 26px note button (tooltip "New scratchpad (⌘⇧N)"), each a
+  15px icon (`dim`, `hover` background and `foreground` on hover, 6px
+  corners).
+- **A Git Graph tab**: named "Graph · <repo folder>", one mod pane on
+  `background`, 12px text. Top, a 40px bar: graph icon, "Git Graph"
+  (semibold), the repo's folder name (`muted`), the current branch in a
+  bordered 11px pill, and at the right a spinner while loading, "N commits"
+  (`dim`, "N+" when there are more) and a refresh button. Then a 26px column
+  header (11px `dim`): Graph, Description, Date (140px), Author (150px),
+  Commit (76px); Date hides under 640px wide, Author under 800px. Then one
+  26px row per commit, newest first (`git log --date-order`):
+  - **Graph**: one lane every 14px (first at 9px), lines 1.5px, coloured by
+    lane from `ansi4, ansi2, ansi5, ansi3, ansi6, ansi1, ansi12, ansi10,
+    ansi13, ansi11`. A commit is an 8px dot in its lane's colour; HEAD is a
+    hollow ring (2px border, `background` inside). Branching and merging
+    lanes are S-curves (cubic, vertical at both ends) within one row. At
+    most 24 lanes are drawn.
+  - **Description**: labels, then the subject (truncated). A local branch is
+    an 18px pill with a 1px border in the commit's lane colour; the current
+    branch is filled with that colour, text `background`, semibold. A remote
+    branch at the same commit as the local one of the same name rides in its
+    pill ("main origin"); others get their own pill with a `border` border
+    and `muted` text. Tags: `raised` pill, `muted` text, a tag icon.
+    Detached HEAD adds a "HEAD" pill.
+  - Date as "13 Nov 2026 14:05" (`muted`), author name (`muted`), short hash
+    (7 chars, terminal font, 11px, `dim`).
+  - With uncommitted changes, a first row "Uncommitted Changes (N)"
+    (`muted`, italic, hash "*"): a hollow `muted` dot, joined to HEAD by a
+    dashed line (3px dashes).
+  - After 500 commits, a row "Load 500 more commits" (`accent`).
+  The selected row is `selected`, others `hover` on hover. Selecting one
+  opens a details pane at the bottom (48% of the tab, 200–560px, top
+  border): a 36px bar with the subject (semibold), "N files", `+adds`
+  (`ansi2`) and `−dels` (`ansi1`) and a close button; below it, left (38% of
+  the width, at most 420px, right border): Commit (full hash), Parents (short
+  hashes in `accent`, clickable), Author with email, Date, Committer when
+  different, then the message body (`muted`), a divider and the changed files
+  (26px rows: the name, struck through when deleted; its folder `dim`;
+  `+n`/`−n` in mono; a 16px status badge A/M/D/U in `ansi2`/`ansi4`/
+  `ansi1`/`ansi3` on its colour at `26` alpha, naming the status on hover).
+  Right: the selected file's diff as VS Code's inline view (19px mono rows,
+  scrolling sideways): the old and the new line number in two 38px gutters,
+  a `+`/`−` marker, added lines on `ansi2` and removed on `ansi1` at `14`
+  alpha (the gutters at `22`). Each hunk starts with a `surface` row with a
+  top border, "⋯" and git's function context in `accent` (else "Lines
+  N–M"); "No newline at end of file" shows as a dim italic note. At most
+  2000 rows, lines clipped at 2000 characters, tabs as 4 spaces.
 - **A scratchpad tab**: named "Scratchpad", one mod pane with a plain-text
   editor (13px, your terminal font, no line numbers, soft wrap, 6px padding)
   on `background`. Above it, a 30px strip with a bottom `border`: the note's
@@ -190,6 +236,20 @@ the project's folder while a file tab is in front.
   space and shows it. Each one starts empty; its text is saved on every
   change and survives restarts and updates while the tab stays open. Closing
   the tab is the end of that note, unless it was saved to a file.
+- The graph button opens the Git Graph of the focused terminal's repository
+  (on that terminal's machine), in the shown space. Clicking it again for the
+  same repository goes back to its tab. Outside a repository, a notification
+  says so.
+- In the graph, clicking a commit selects it and shows its details; clicking
+  it again, Esc or the close button hides them. ↑/↓ (or k/j) move the
+  selection once the tab has the keyboard. The first changed file's diff
+  shows at once; clicking another file shows its diff. A merge shows its
+  changes against its first parent. Clicking a parent's hash jumps to it.
+  The uncommitted row lists the working tree's changes against HEAD plus
+  untracked files (shown as all-added).
+- The graph refreshes when anything in the repository changes (folder watch
+  on this computer) and every 10 s. The log is read again only when HEAD, the
+  current branch or a ref moved; otherwise only the uncommitted row updates.
 - "Save as…" (⌘⇧S, or ⌘S before the note has a file) opens the system's save
   dialog in the space's folder (home for an SSH space), named after the
   note's first line (`.md`, "Note.md" when empty). The note is written there,
@@ -209,10 +269,51 @@ the project's folder while a file tab is in front.
   `claude-limits`) in `sidebar-lists` between `spaces` and `agents`. The
   `tabs` block (still Herdr's own `tabs` mod) goes into a row `tab-bar`
   (`size: {px: 42}`, `resizable: false`) with `size: {weight: 1}`, followed
-  by a block `tab-bar-extras` (`size: {px: 36}`, mod `tab-bar-extras`).
+  by a block `tab-bar-extras` (`size: {px: 65}`, mod `tab-bar-extras`).
 - One mod folder, `mods/tab-bar-extras/`: `main.js`, `mod.json`
-  (`"place": "none"`) and `note.svg`. The note runs
-  `mod.open {name: "scratchpad"}`. More buttons beside the tab bar go here.
+  (`"place": "none"`), `graph.svg` and `note.svg`. The note runs
+  `mod.open {name: "scratchpad"}`. The graph finds the repository with `git
+  rev-parse --show-toplevel` in the focused pane's folder (`on`: the space's
+  machine), then `run("tab.new", { name: "Graph · <folder>", space, mod:
+  "git-graph", props: { root, on } })`, and keeps "<machine>|<root>" → tab
+  id in shared `"git-graph.open"` (found as for file tabs, below). More
+  buttons beside the tab bar go here.
+- One mod folder, `mods/git-graph/`: `main.js`, `mod.json` (`"place":
+  "none"`, `"focusable": true`), `graph.svg`, `tag.svg`, `refresh.svg`; it
+  also uses Herdr's `mods/pane/close.svg` and
+  `mods/workspace-chrome/spinner.svg`. Every git call starts with
+  `--no-optional-locks -c core.fsmonitor=false -c diff.autoRefreshIndex=false`
+  (as Herdr's Changes mod does) so a refresh writes nothing under `.git`.
+  - Data: `rev-parse --verify -q HEAD`, `symbolic-ref -q --short HEAD`,
+    `for-each-ref --format=%(objectname)%00%(*objectname)%00%(refname)
+    refs/heads refs/remotes refs/tags` (tags by their peeled commit,
+    `<remote>/HEAD` skipped), `status --porcelain=v1 -z --no-renames
+    --untracked-files=all`, and `log --date-order -n<limit+1>
+    --format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1e --branches --remotes
+    --tags HEAD` (not `--all`, which would draw stashes). Details: `show -s`
+    for the message, and `diff <first parent> <commit>` with `--name-status
+    -z --no-renames` and `--numstat -z` (a root commit, or an unborn HEAD,
+    against the empty tree `4b825dc642cb6eb9a060e54bf8d69288fbee4904`). The
+    uncommitted row runs `diff HEAD` the same way plus `ls-files --others
+    --exclude-standard -z`, and reads untracked files directly. A file's diff
+    is `diff … --no-color --no-ext-diff --no-textconv -- <path>`, parsed from
+    the first `@@` on.
+  - Lanes: walk the commits newest first keeping `lanes[]`, the commit each
+    lane waits for. A commit takes the first lane waiting for it (else the
+    first free one); other lanes waiting for it end in it; its lane then
+    waits for its first parent, and each other parent takes the lane already
+    waiting for it or a free one. Each row keeps the lanes before and after
+    it and draws: lanes passing by (straight), its own lane in (if a child
+    waited) and out (if it has a parent), curves in from the lanes that ended
+    and out to its other parents. The uncommitted row is a fake commit `*`
+    whose parent is HEAD.
+  - Drawing: per row, one `window.paint_path(PathBuilder.stroke(1.5)...
+    .build(), color).absolute().inset_0()` per line or curve (dashed with
+    `.dash_array([3, 3])`), in a `relative` box as wide as the lanes, and the
+    dot as an absolutely placed 8px rounded `div`.
+  - The list is a `v_virtual_list` keyed by hash, `.absolute().inset_0()` in a
+    `relative` box, with a `VirtualListScrollHandle` so ↑/↓ keep the
+    selection on screen.
 - One mod folder, `mods/scratchpad/`: `main.js` and `mod.json`
   (`"place": "none"`, `"overlay": {width: 1, height: 1}`).
   `main.js` default-exports a `View` with two roles, chosen by `props()`:
@@ -357,6 +458,17 @@ the project's folder while a file tab is in front.
   in shared `workspace.panels`: Herdr's tab bar remembers the panel per
   space but restores only the ids listed there (Files and Changes unless the
   person changed it). That list is shared by every layout.
+- A row of a `v_virtual_list` can't register `on_click` (the renderer
+  throws, and the rows draw nothing at all): give the list
+  `.on_item_click((key, cx) => …)` and key the rows (the hash, "more").
+  `hover` styles in rows are fine.
+- `herdr-app check` doesn't run a virtual list's rows, so an error there
+  passes the check and shows only as an empty list: try it in the app.
+- A `v_virtual_list` given `.size_full()` directly inside a flex child drew
+  nothing; `.absolute().inset_0()` inside a `relative` box works.
+- In a mod, `window` is GPUI's window (with `paint_path`); `herdr`'s
+  `window()` is a different thing (the app window's buttons). Don't import
+  `window` from `herdr` in a mod that draws paths.
 - Herdr's `image()` only loads files inside its own folder, and doesn't fit
   itself to a box: given a width and height it takes the width and follows
   its own proportions, so a square picture in a wide box overflows. The
@@ -413,6 +525,12 @@ the project's folder while a file tab is in front.
 - With the status line line added, `~/.cache/herdr-claude-limits/` has one
   file per account, and the Limits panel shows the same session and weekly
   percentages as Claude Code's own `/usage`.
+- The graph button, in a git repository, opens "Graph · <folder>" with one
+  row per commit, coloured lanes, branch and tag labels, and an
+  "Uncommitted Changes" row when the tree is dirty; clicking it again shows
+  the same tab. In a repo with a merged branch, the branch's lane curves out
+  of the merge commit and back into the commit it started from. Clicking a
+  commit shows its files and the first file's diff.
 - Settings → Look shows "Bench" with its preview; with it chosen
   (or after `layout.switch {"name":"Bench"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.

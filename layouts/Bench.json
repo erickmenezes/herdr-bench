@@ -124,7 +124,7 @@
               "id": "tab-bar-extras",
               "type": "block",
               "size": {
-                "px": 36
+                "px": 65
               },
               "content": {
                 "mod": "tab-bar-extras"

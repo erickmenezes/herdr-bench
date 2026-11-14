@@ -29,6 +29,12 @@ with beside your agents.
 - **Claude's limits.** Above Agents, a Limits panel shows how much of
   Claude's session (5-hour) and weekly limits you've used, per account, with
   each account's plan, and a notification when one reaches 80% and 100%.
+- **A Git Graph.** A graph button after Files in the tab bar opens the
+  focused terminal's repository as a graph in its own tab, like VS Code's
+  Git Graph: coloured branch lanes, branch, remote and tag labels, date,
+  author and hash, and an "Uncommitted Changes" row on top. Click a commit
+  for its message and changed files, and a file for its diff; ↑/↓ move
+  through commits. It follows new commits and branches as they happen.
 - **A Scratchpad.** A note button after Files in the tab bar (or
   `cmd-shift-n`) opens an empty tab for quick plain-text notes that stays
   until you close it. "Save as…" (⌘⇧S) turns a note into a real file, and
@@ -45,8 +51,9 @@ Add the Herdr layout at github.com/erickmenezes/herdr-bench
 ```
 
 Or copy `layouts/Bench.json` and `layouts/Bench.svg` into
-`~/.config/herdr-app/layouts/`, and the five folders in `mods/`
-(`files-tabs`, `better-icons`, `claude-limits`, `scratchpad`, `tab-bar-extras`)
+`~/.config/herdr-app/layouts/`, and the six folders in `mods/`
+(`files-tabs`, `better-icons`, `claude-limits`, `scratchpad`, `tab-bar-extras`,
+`git-graph`)
 into `~/.config/herdr-app/mods/`. If you already have Better Icons installed,
 keep yours: other mods find it by the same name. Add the key in
 `keys.json` (`cmd-shift-n`, a new scratchpad) to your own `keys.json`, unless
@@ -70,7 +77,9 @@ What it touches: the Files panel runs `sh` (to list folders), `stat`,
 menu, `open`, `pbcopy` (or `wl-copy`/`xclip`/`xsel`), `mkdir`, `cp -R -p` to
 paste a copy, `mv -n` to rename or paste a cut, and
 `/usr/bin/trash` (else Finder via `osascript`; `gio trash` or `trash-put` on
-Linux and SSH machines) to move to the Trash. The Limits panel runs `sh` to read
+Linux and SSH machines) to move to the Trash. The Git Graph runs only
+`git` (reading: `log`, `show`, `diff`, `status`, `for-each-ref`), never
+changing the repository. The Limits panel runs `sh` to read
 `~/.cache/herdr-claude-limits/`, which `save-limits.sh` writes. Those
 don't reach the network or read your Claude login. Scratchpad notes are kept
 in Herdr's own storage for that mod, and only written to a file you pick in the
