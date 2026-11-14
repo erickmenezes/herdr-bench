@@ -87,8 +87,14 @@ the project's folder while a file tab is in front.
 - **A Git Graph tab**: named "Graph · <repo folder>", one mod pane on
   `background`, 12px text. Top, a 40px bar: graph icon, "Git Graph"
   (semibold), the repo's folder name (`muted`), the current branch in a
-  bordered 11px pill, and at the right a spinner while loading, "N commits"
-  (`dim`, "N+" when there are more) and a refresh button. Then a 26px column
+  bordered 11px pill with "↑n ↓m" (commits to push and to pull against its
+  upstream as last fetched, terminal font, 10px; "gone" when the upstream was
+  deleted; a tooltip spells it out), and at the right: a search box (26px
+  high, 240px, 170px under 800px wide; search icon, "Search commits", a
+  clear button once typed; `accent` border while searching), a "current
+  branch only" toggle (branch icon, `selected` when on), a spinner while
+  loading, "N commits" (`dim`, "N+" when there are more; "M of N" while
+  searching) and a refresh button. Then a 26px column
   header (11px `dim`): Graph, Description, Date (140px), Author (150px),
   Commit (76px); Date hides under 640px wide, Author under 800px. Then one
   26px row per commit, newest first (`git log --date-order`):
@@ -103,7 +109,9 @@ the project's folder while a file tab is in front.
     branch is filled with that colour, text `background`, semibold. A remote
     branch at the same commit as the local one of the same name rides in its
     pill ("main origin"); others get their own pill with a `border` border
-    and `muted` text. Tags: `raised` pill, `muted` text, a tag icon.
+    and `muted` text, faded to 45% once merged into HEAD (except the
+    current branch's upstream). Local branches with an upstream add "↑n ↓m"
+    in the pill. Tags: `raised` pill, `muted` text, a tag icon.
     Detached HEAD adds a "HEAD" pill.
   - Date as "13 Nov 2026 14:05" (`muted`), author name (`muted`), short hash
     (7 chars, terminal font, 11px, `dim`).
@@ -247,6 +255,12 @@ the project's folder while a file tab is in front.
   changes against its first parent. Clicking a parent's hash jumps to it.
   The uncommitted row lists the working tree's changes against HEAD plus
   untracked files (shown as all-added).
+- Typing in the search box (or `/`, ⌘F from the list) narrows the list to
+  the loaded commits matching every word, in the subject, author, email or a
+  ref name, or as the start of the hash; the rows keep their lane colour but
+  draw no lines. Enter or ↓ goes to the first result, Esc clears the search.
+  A selected commit stays open while the search changes. The branch toggle
+  reads the log from HEAD only.
 - The graph refreshes when anything in the repository changes (folder watch
   on this computer) and every 10 s. The log is read again only when HEAD, the
   current branch or a ref moved; otherwise only the uncommitted row updates.
@@ -279,18 +293,22 @@ the project's folder while a file tab is in front.
   id in shared `"git-graph.open"` (found as for file tabs, below). More
   buttons beside the tab bar go here.
 - One mod folder, `mods/git-graph/`: `main.js`, `mod.json` (`"place":
-  "none"`, `"focusable": true`), `graph.svg`, `tag.svg`, `refresh.svg`; it
+  "none"`, `"focusable": true`), `graph.svg`, `tag.svg`, `refresh.svg`,
+  `search.svg`, `branch.svg`; it
   also uses Herdr's `mods/pane/close.svg` and
   `mods/workspace-chrome/spinner.svg`. Every git call starts with
   `--no-optional-locks -c core.fsmonitor=false -c diff.autoRefreshIndex=false`
   (as Herdr's Changes mod does) so a refresh writes nothing under `.git`.
   - Data: `rev-parse --verify -q HEAD`, `symbolic-ref -q --short HEAD`,
-    `for-each-ref --format=%(objectname)%00%(*objectname)%00%(refname)
-    refs/heads refs/remotes refs/tags` (tags by their peeled commit,
-    `<remote>/HEAD` skipped), `status --porcelain=v1 -z --no-renames
+    `for-each-ref --format=%(objectname)%00%(*objectname)%00%(refname)%00
+    %(upstream:short)%00%(upstream:track,nobracket) refs/heads refs/remotes
+    refs/tags` (tags by their peeled commit, `<remote>/HEAD` skipped; the
+    track reads "ahead 2, behind 3" or "gone"), `for-each-ref --merged=HEAD
+    --format=%(refname:lstrip=2) refs/remotes` for the faded remotes, `status --porcelain=v1 -z --no-renames
     --untracked-files=all`, and `log --date-order -n<limit+1>
     --format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1e --branches --remotes
-    --tags HEAD` (not `--all`, which would draw stashes). Details: `show -s`
+    --tags HEAD` (not `--all`, which would draw stashes; just `HEAD` with
+    the branch toggle on). Details: `show -s`
     for the message, and `diff <first parent> <commit>` with `--name-status
     -z --no-renames` and `--numstat -z` (a root commit, or an unborn HEAD,
     against the empty tree `4b825dc642cb6eb9a060e54bf8d69288fbee4904`). The
@@ -530,7 +548,9 @@ the project's folder while a file tab is in front.
   "Uncommitted Changes" row when the tree is dirty; clicking it again shows
   the same tab. In a repo with a merged branch, the branch's lane curves out
   of the merge commit and back into the commit it started from. Clicking a
-  commit shows its files and the first file's diff.
+  commit shows its files and the first file's diff. Typing a word from one
+  commit's subject leaves only that commit ("1 of N"); on a branch one commit
+  ahead of its upstream, the branch pill reads "↑1".
 - Settings → Look shows "Bench" with its preview; with it chosen
   (or after `layout.switch {"name":"Bench"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.

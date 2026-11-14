@@ -34,7 +34,10 @@ with beside your agents.
   Git Graph: coloured branch lanes, branch, remote and tag labels, date,
   author and hash, and an "Uncommitted Changes" row on top. Click a commit
   for its message and changed files, and a file for its diff; ↑/↓ move
-  through commits. It follows new commits and branches as they happen.
+  through commits. Search narrows the list by message, author, hash or
+  branch, a toggle shows only the current branch, and each branch shows how
+  many commits it has to push and pull (↑2 ↓5). It follows new commits and
+  branches as they happen.
 - **A Scratchpad.** A note button after Files in the tab bar (or
   `cmd-shift-n`) opens an empty tab for quick plain-text notes that stays
   until you close it. "Save as…" (⌘⇧S) turns a note into a real file, and
