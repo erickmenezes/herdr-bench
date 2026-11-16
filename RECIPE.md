@@ -94,7 +94,8 @@ the project's folder while a file tab is in front.
   clear button once typed; `accent` border while searching), a "current
   branch only" toggle (branch icon, `selected` when on), a spinner while
   loading, "N commits" (`dim`, "N+" when there are more; "M of N" while
-  searching) and a refresh button. Then a 26px column
+  searching), "Fetch" (a down-arrow icon, 11px `dim`; a spinner and
+  "Fetching…" while it runs) and a refresh button. Then a 26px column
   header (11px `dim`): Graph, Description, Date (140px), Author (150px),
   Commit (76px); Date hides under 640px wide, Author under 800px. Then one
   26px row per commit, newest first (`git log --date-order`):
@@ -271,6 +272,33 @@ the project's folder while a file tab is in front.
   to graph" (Esc). Search narrows the history too. Selecting a commit opens
   that file's diff in it, under the name it had then. Back in the graph,
   the selected commit stays selected.
+- Right-clicking a commit (not the uncommitted row) selects it and opens a
+  250px menu at the pointer (`popover`, 31px rows, `selected` on the
+  keyboard's row, dividers, 24px `dim` section headings; ↑/↓, Enter, Esc):
+  "Check Out This Commit…" (not on HEAD), "New Branch Here…", "Cherry-pick
+  onto <branch>…" (not on HEAD) and "Revert…" (neither on a merge), "Copy
+  Hash", "Copy Subject"; then a section per local branch at the commit
+  ("main (current)"): "Check Out <branch>" (not the current one), "Pull (N
+  commits)" (the current one, when behind), "Push (N commits)…" when ahead
+  or "Publish…" with no upstream, "Rename…", "Delete…" (not the current
+  one); and per remote branch there of its own, "Check Out as a Local
+  Branch". Copying, checking out a branch, pulling (fast-forward only; a
+  diverged branch says to merge or rebase in a terminal) and fetching run
+  at once, with a notification only on failure. The rest open a 460px
+  dialog (`popover`, title, the repository's folder `dim`, what will
+  happen in `muted`, buttons Cancel and the action, Enter confirms, Esc
+  closes): detaching says no branch will hold new commits; New Branch and
+  Rename ask for a name (checked with `git check-ref-format --branch`; New
+  Branch also offers "Create and Check Out"); Cherry-pick and Revert say
+  where the new commit goes; Push says how many commits go where and that
+  it's never forced (Publish: which remote, setting the upstream); Delete
+  is red. A delete git refuses because the branch isn't merged asks again,
+  "Delete Anyway" (red), saying the commits stay about two weeks in the
+  reflog. A cherry-pick or revert that stops on conflicts offers "Abort"
+  or "Leave It" (resolve in a terminal); one with nothing to add puts
+  things back and says the change is already there. git's last error line
+  shows in `ansi1` otherwise. The graph looks again as soon as anything
+  ran.
 - The graph refreshes when anything in the repository changes (folder watch
   on this computer) and every 10 s. The log is read again only when HEAD, the
   current branch or a ref moved; otherwise only the uncommitted row updates.
@@ -304,7 +332,13 @@ the project's folder while a file tab is in front.
   buttons beside the tab bar go here.
 - One mod folder, `mods/git-graph/`: `main.js`, `mod.json` (`"place":
   "none"`, `"focusable": true`), `graph.svg`, `tag.svg`, `refresh.svg`,
-  `search.svg`, `branch.svg`, `history.svg`; it
+  `search.svg`, `branch.svg`, `history.svg`, `fetch.svg`, and
+  `actions.js` (the menu and dialogs, opened as overlays of this same mod:
+  `openOverlay({ mod: "git-graph", kind: "popup", at: "pointer", props: {
+  menu } })` or `kind: "dialog"` with `props: { dialog }`, both carrying the
+  commit's facts: root, machine, hash, subject, merge, HEAD, current branch,
+  dirty, its branches with upstream/ahead/behind/gone, its remote branches);
+  it
   also uses Herdr's `mods/pane/close.svg` and
   `mods/workspace-chrome/spinner.svg`. Every git call starts with
   `--no-optional-locks -c core.fsmonitor=false -c diff.autoRefreshIndex=false`
@@ -329,6 +363,18 @@ the project's folder while a file tab is in front.
     --format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s --name-only -z HEAD --
     <path>`, where each record's fields end at a NUL followed by a newline
     and the file's path at that commit.
+  - Actions run `git` without the read-only options, through `sh -c
+    'GIT_TERMINAL_PROMPT=0 exec git "$@"'` so a missing password fails
+    instead of waiting: `switch <branch>`, `switch --track <remote/branch>`,
+    `switch --detach <hash>`, `branch <name> <hash>` or `switch -c <name>
+    <hash>`, `branch -m`, `branch -d` (then `-D`), `cherry-pick <hash>`,
+    `revert --no-edit <hash>` (stuck: `rev-parse -q --verify
+    CHERRY_PICK_HEAD`/`REVERT_HEAD`, then `--abort`), `pull --ff-only`,
+    `push <remote> <branch>:<upstream branch>` or `push -u origin <branch>`,
+    `fetch --all --prune` (network ones get 120 s). Copying uses `pbcopy`
+    (else `wl-copy`, `xclip`, `xsel`). Afterwards the overlay sets shared
+    `"git-graph.request"` `{ id, at, root, on }` and the graph with that
+    repository refreshes (forced) on its next frame.
   - Lanes: walk the commits newest first keeping `lanes[]`, the commit each
     lane waits for. A commit takes the first lane waiting for it (else the
     first free one); other lanes waiting for it end in it; its lane then
@@ -473,6 +519,11 @@ the project's folder while a file tab is in front.
 
 ## Watch out
 
+- The commit list's rows can't take mouse handlers: right-clicks go to the
+  list's `on_item_secondary_click((key, event, cx) => …)`. A menu or dialog
+  overlay keeps `props().overlay` from its constructor to close itself
+  later; `props()` belongs to the frame.
+
 - Better Icons' folder must be named `better-icons`: every mod that uses it
   reads `mods/better-icons/icons/<name>.svg`. If one is already installed,
   keep it rather than install this copy under another name.
@@ -565,7 +616,10 @@ the project's folder while a file tab is in front.
   commit's subject leaves only that commit ("1 of N"); on a branch one commit
   ahead of its upstream, the branch pill reads "↑1". In a repo where a file
   was renamed, its History lists the commits from before the rename, and
-  selecting one shows the diff under the old name.
+  selecting one shows the diff under the old name. Right-clicking a commit
+  on another branch offers "Cherry-pick onto main…"; confirming adds the
+  commit to main and the graph shows it at once. Deleting an unmerged
+  branch asks a second time, "Delete Anyway".
 - Settings → Look shows "Bench" with its preview; with it chosen
   (or after `layout.switch {"name":"Bench"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.

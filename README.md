@@ -37,7 +37,10 @@ with beside your agents.
   through commits. Search narrows the list by message, author, hash or
   branch, a toggle shows only the current branch, and each branch shows how
   many commits it has to push and pull (↑2 ↓5). A file's History button
-  lists every commit that changed it, following renames. It follows new commits and
+  lists every commit that changed it, following renames. Right-click a
+  commit to check it out, branch from it, cherry-pick or revert it, or to
+  check out, pull, push, rename or delete a branch on it; Fetch in the header
+  updates the remotes. It follows new commits and
   branches as they happen.
 - **A Scratchpad.** A note button after Files in the tab bar (or
   `cmd-shift-n`) opens an empty tab for quick plain-text notes that stays
@@ -81,11 +84,15 @@ What it touches: the Files panel runs `sh` (to list folders), `stat`,
 menu, `open`, `pbcopy` (or `wl-copy`/`xclip`/`xsel`), `mkdir`, `cp -R -p` to
 paste a copy, `mv -n` to rename or paste a cut, and
 `/usr/bin/trash` (else Finder via `osascript`; `gio trash` or `trash-put` on
-Linux and SSH machines) to move to the Trash. The Git Graph runs only
-`git` (reading: `log`, `show`, `diff`, `status`, `for-each-ref`), never
-changing the repository. The Limits panel runs `sh` to read
-`~/.cache/herdr-claude-limits/`, which `save-limits.sh` writes. Those
-don't reach the network or read your Claude login. Scratchpad notes are kept
+Linux and SSH machines) to move to the Trash. The Git Graph runs `git`
+to read (`log`, `show`, `diff`, `status`, `for-each-ref`), and changes the
+repository only from its right-click menu and Fetch button: `switch`,
+`branch`, `cherry-pick`, `revert`, `pull --ff-only`, `push` (never forced)
+and `fetch --all --prune`, the last three reaching your remotes. Detaching
+HEAD, cherry-picking, reverting, deleting and pushing ask first. The Limits
+panel runs `sh` to read `~/.cache/herdr-claude-limits/`, which
+`save-limits.sh` writes. Apart from the Git Graph's fetch, pull and push,
+none of this reaches the network or reads your Claude login. Scratchpad notes are kept
 in Herdr's own storage for that mod, and only written to a file you pick in the
 system's save dialog (`osascript` on macOS, `zenity` or `kdialog` on Linux). Better Icons (about 5 MB of
 icons) only reads its own folder.

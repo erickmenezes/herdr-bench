@@ -2,7 +2,8 @@
 // props: { root, on } (the repository's top folder, and the machine it's on).
 import { View, div, svg, PathBuilder } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list, VirtualListScrollHandle, InputState, Input } from "gpui-base";
-import { exec, readTextFile, watchFolder, theme, settings, props, nextCommand } from "herdr";
+import { exec, readTextFile, watchFolder, theme, settings, props, nextCommand, openOverlay, shared, notify } from "herdr";
+import { MenuView, DialogView, menuHeight, REQUEST } from "./actions.js";
 
 const ROW = 26, LANE = 14, PAGE = 500, MAX_LANES = 24;
 const WORKTREE = "*";
@@ -172,6 +173,10 @@ function matches(c, words, refs) {
 
 export default class GitGraph extends View {
   init(_props, cx) {
+    // A copy opened as the right-click menu or one of its dialogs (actions.js).
+    const own = props();
+    if (own?.menu) { this.overlay = new MenuView(own, cx); return; }
+    if (own?.dialog) { this.overlay = new DialogView(own, cx); return; }
     this.handle = cx.focus_handle();
     this.scroll = VirtualListScrollHandle.new();
     this.limit = PAGE; this.raw = []; this.commits = []; this.width = 1; this.refs = new Map();
@@ -638,7 +643,48 @@ export default class GitGraph extends View {
           .when(!this.open && this.files.length > 0, (e) => e.child(div().absolute().top(8).px(12).text_color(t.dim).child("Pick a file to see its diff"))))));
   }
 
-  render(_cx) {
+  // The facts the menu and its dialogs need about a commit.
+  openMenu(key, cx) {
+    const c = this.commit(key);
+    if (!c || c.hash === WORKTREE || !this.root) return;
+    this.handle.focus();
+    if (this.selected !== key) this.select(key, cx);
+    const refs = this.refs.get(c.hash) ?? [];
+    const menu = {
+      root: this.root, on: this.on ?? null, hash: c.hash, subject: c.subject, merge: c.parents.length > 1,
+      isHead: c.hash === this.head, branch: this.branch, dirty: this.dirty > 0,
+      branches: refs.filter((r) => r.kind === "branch").map((r) => ({ name: r.name, current: r.name === this.branch,
+        upstream: r.track?.upstream ?? null, ahead: r.track?.ahead ?? 0, behind: r.track?.behind ?? 0, gone: Boolean(r.track?.gone) })),
+      remotes: refs.filter((r) => r.kind === "remote").map((r) => r.name),
+    };
+    openOverlay({ mod: "git-graph", kind: "popup", at: "pointer", width: 250, height: menuHeight(menu), props: { menu } });
+  }
+
+  // Fetches every remote (pruning branches deleted there), then looks again.
+  fetch(cx) {
+    if (this.fetching || !this.root) return;
+    this.fetching = true; cx.notify();
+    cx.spawn(async (cx) => {
+      const r = await exec("sh", ["-c", 'GIT_TERMINAL_PROMPT=0 exec git fetch --all --prune', "git"], { cwd: this.root, on: this.on, timeout: 120000 })
+        .catch((e) => ({ code: -1, stderr: String(e?.message ?? e) }));
+      this.fetching = false;
+      if (r.code !== 0) notify({ title: "Couldn't fetch", body: (r.stderr || "").trim().split("\n").filter(Boolean).pop() || "git fetch failed", level: "error" });
+      this.refresh(cx, true);
+      cx.notify();
+    });
+  }
+
+  // git ran from the menu or a dialog: look again at once.
+  answer(cx) {
+    const r = shared(REQUEST);
+    if (!r || r.id === this.answered || Date.now() - (r.at ?? 0) > 10000 || r.root !== this.root || (r.on ?? null) !== (this.on ?? null)) return;
+    this.answered = r.id;
+    this.refresh(cx, true);
+  }
+
+  render(cx) {
+    if (this.overlay) return this.overlay.render(cx);
+    this.answer(cx);
     const t = theme(), pal = this.palette(t);
     const cols = { date: this.size.width > 640, author: this.size.width > 800 };
     const items = this.more && !this.history ? [...this.commits, "more"] : this.commits;
@@ -687,6 +733,11 @@ export default class GitGraph extends View {
         .when(this.loading, (e) => e.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.dim).spin(900)))
         .child(div().text_size(11).text_color(t.dim).flex_none()
           .child(this.history ? "" : this.query.trim() ? `${this.commits.length} of ${this.raw.length}${this.more ? "+" : ""}` : `${this.raw.length}${this.more ? "+" : ""} commits`))
+        .child(div().id("fetch").h(24).px(7).gap(5).flex().flex_none().items_center().rounded(5).cursor_pointer().text_size(11).text_color(t.dim)
+          .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Fetch from every remote")
+          .on_click((_e, cx) => this.fetch(cx))
+          .child(svg(this.fetching ? "mods/workspace-chrome/spinner.svg" : "mods/git-graph/fetch.svg").size(12).when(Boolean(this.fetching), (e) => e.spin(900)))
+          .child(this.fetching ? "Fetching…" : "Fetch"))
         .child(div().id("refresh").size(24).flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(t.dim)
           .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Refresh")
           .on_click((_e, cx) => this.refresh(cx, true)).child(svg("mods/git-graph/refresh.svg").size(13))))
@@ -707,6 +758,7 @@ export default class GitGraph extends View {
               if (key === "more") { this.limit += PAGE; this.refresh(cx, true); }
               else this.select(this.selected === key ? null : key, cx);
             })
+            .on_item_secondary_click((key, _e, cx) => { if (key !== "more") this.openMenu(key, cx); })
             .track_scroll(this.scroll).absolute().inset_0())
           .child(Scrollbar.vertical("graph-list").absolute().inset_0()))
         .when(!items.length, (e) => e.child(div().p(14).text_color(t.dim)
