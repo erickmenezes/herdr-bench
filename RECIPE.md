@@ -129,12 +129,15 @@ the project's folder while a file tab is in front.
   (26px rows: the name, struck through when deleted; its folder `dim`;
   `+n`/`−n` in mono; a 16px status badge A/M/D/U in `ansi2`/`ansi4`/
   `ansi1`/`ansi3` on its colour at `26` alpha, naming the status on hover).
-  Right: the selected file's diff as VS Code's inline view (19px mono rows,
+  Right: a 28px bar with the file's path (terminal font, 11px, `muted`) and
+  a "History" button (clock icon, 11px, `dim`; not for untracked files, nor
+  for the file whose history is showing), then the selected file's diff as
+  VS Code's inline view (19px mono rows,
   scrolling sideways): the old and the new line number in two 38px gutters,
   a `+`/`−` marker, added lines on `ansi2` and removed on `ansi1` at `14`
   alpha (the gutters at `22`). Each hunk starts with a `surface` row with a
-  top border, "⋯" and git's function context in `accent` (else "Lines
-  N–M"); "No newline at end of file" shows as a dim italic note. At most
+  top border, "⋯", "Lines N–M" (or "Line N") in `accent` and git's
+  function context after it in `dim`; "No newline at end of file" shows as a dim italic note. At most
   2000 rows, lines clipped at 2000 characters, tabs as 4 spaces.
 - **A scratchpad tab**: named "Scratchpad", one mod pane with a plain-text
   editor (13px, your terminal font, no line numbers, soft wrap, 6px padding)
@@ -261,6 +264,13 @@ the project's folder while a file tab is in front.
   draw no lines. Enter or ↓ goes to the first result, Esc clears the search.
   A selected commit stays open while the search changes. The branch toggle
   reads the log from HEAD only.
+- "History" over a diff replaces the graph with the commits that changed
+  that file, from HEAD back and across renames (at most 2000), drawn like
+  search results, under a 30px `surface` strip: clock icon (`accent`),
+  "History of <name>" (semibold), the folder (`dim`), "N commits" and "Back
+  to graph" (Esc). Search narrows the history too. Selecting a commit opens
+  that file's diff in it, under the name it had then. Back in the graph,
+  the selected commit stays selected.
 - The graph refreshes when anything in the repository changes (folder watch
   on this computer) and every 10 s. The log is read again only when HEAD, the
   current branch or a ref moved; otherwise only the uncommitted row updates.
@@ -294,7 +304,7 @@ the project's folder while a file tab is in front.
   buttons beside the tab bar go here.
 - One mod folder, `mods/git-graph/`: `main.js`, `mod.json` (`"place":
   "none"`, `"focusable": true`), `graph.svg`, `tag.svg`, `refresh.svg`,
-  `search.svg`, `branch.svg`; it
+  `search.svg`, `branch.svg`, `history.svg`; it
   also uses Herdr's `mods/pane/close.svg` and
   `mods/workspace-chrome/spinner.svg`. Every git call starts with
   `--no-optional-locks -c core.fsmonitor=false -c diff.autoRefreshIndex=false`
@@ -315,7 +325,10 @@ the project's folder while a file tab is in front.
     uncommitted row runs `diff HEAD` the same way plus `ls-files --others
     --exclude-standard -z`, and reads untracked files directly. A file's diff
     is `diff … --no-color --no-ext-diff --no-textconv -- <path>`, parsed from
-    the first `@@` on.
+    the first `@@` on. A file's history: `log --follow -n2000
+    --format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s --name-only -z HEAD --
+    <path>`, where each record's fields end at a NUL followed by a newline
+    and the file's path at that commit.
   - Lanes: walk the commits newest first keeping `lanes[]`, the commit each
     lane waits for. A commit takes the first lane waiting for it (else the
     first free one); other lanes waiting for it end in it; its lane then
@@ -550,7 +563,9 @@ the project's folder while a file tab is in front.
   of the merge commit and back into the commit it started from. Clicking a
   commit shows its files and the first file's diff. Typing a word from one
   commit's subject leaves only that commit ("1 of N"); on a branch one commit
-  ahead of its upstream, the branch pill reads "↑1".
+  ahead of its upstream, the branch pill reads "↑1". In a repo where a file
+  was renamed, its History lists the commits from before the rename, and
+  selecting one shows the diff under the old name.
 - Settings → Look shows "Bench" with its preview; with it chosen
   (or after `layout.switch {"name":"Bench"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.

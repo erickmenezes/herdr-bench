@@ -36,7 +36,8 @@ with beside your agents.
   for its message and changed files, and a file for its diff; ↑/↓ move
   through commits. Search narrows the list by message, author, hash or
   branch, a toggle shows only the current branch, and each branch shows how
-  many commits it has to push and pull (↑2 ↓5). It follows new commits and
+  many commits it has to push and pull (↑2 ↓5). A file's History button
+  lists every commit that changed it, following renames. It follows new commits and
   branches as they happen.
 - **A Scratchpad.** A note button after Files in the tab bar (or
   `cmd-shift-n`) opens an empty tab for quick plain-text notes that stays
