@@ -95,7 +95,15 @@ the project's folder while a file tab is in front.
   branch only" toggle (branch icon, `selected` when on), a spinner while
   loading, "N commits" (`dim`, "N+" when there are more; "M of N" while
   searching), "Fetch" (a down-arrow icon, 11px `dim`; a spinner and
-  "Fetching…" while it runs) and a refresh button. Then a 26px column
+  "Fetching…" while it runs) and a refresh button. While git is partway
+  through something, a 32px banner on `ansi3` at `1f` alpha follows (a
+  warning icon in `ansi3`, then semibold "Merging feature into main",
+  "Rebasing topic onto main" with "step 2 of 2" (`muted`), "Applying
+  patches", "Cherry-picking abc1234 “subject”", "Reverting …" or
+  "Bisecting"; then "N files with conflicts" in `ansi3` or "No conflicts
+  left" in `muted`; at the right "Continue" (`solid`, only with no conflicts
+  left, not for bisect) and "Abort…" ("Stop Bisecting…"), 22px buttons with
+  the git command as tooltip). Then a 26px column
   header (11px `dim`): Graph, Description, Date (140px), Author (150px),
   Commit (76px); Date hides under 640px wide, Author under 800px. Then one
   26px row per commit, newest first (`git log --date-order`):
@@ -119,6 +127,15 @@ the project's folder while a file tab is in front.
   - With uncommitted changes, a first row "Uncommitted Changes (N)"
     (`muted`, italic, hash "*"): a hollow `muted` dot, joined to HEAD by a
     dashed line (3px dashes).
+  - Each stash is a row above the commit it was made on (and among the
+    commits by date), in a lane of its own joined to that commit: a hollow
+    square (8px, 2px border in the lane colour), a "stash@{n}" pill (lane
+    colour border, a box icon in the lane colour, `muted` text) and git's
+    subject ("WIP on main: …", "On main: <message>") in `muted`. With the
+    branch toggle on, only stashes made on a shown commit. Its details read
+    Stash, Commit, "Made on" (the commit, clickable), Author, Date; its
+    files are the stashed changes plus, for a stash made with untracked
+    files, those as added (tooltip "Untracked when stashed", no History).
   - After 500 commits, a row "Load 500 more commits" (`accent`).
   The selected row is `selected`, others `hover` on hover. Selecting one
   opens a details pane at the bottom (48% of the tab, 200–560px, top
@@ -299,6 +316,17 @@ the project's folder while a file tab is in front.
   things back and says the change is already there. git's last error line
   shows in `ansi1` otherwise. The graph looks again as soon as anything
   ran.
+- Right-click a stash: a "stash@{n}" heading, "Apply", "Pop", "Drop…",
+  "Copy Hash". Apply and Pop run at once (a toast says so; on conflicts,
+  "Applied with conflicts", the stash kept); Drop asks, in red, saying the
+  changes are nowhere else. Right-click Uncommitted Changes: "Stash
+  Changes…", a dialog with an optional message, "Stash" and "Include
+  Untracked". If the stash list changed since the row was drawn, nothing
+  runs and it says to pick the stash again.
+- The banner's Continue runs `--continue` at once (git's error as a toast if
+  it refuses); Abort… asks first (red), saying what's lost: the conflicts
+  resolved so far, or for a rebase the commits already replayed. The banner
+  goes once git is done.
 - The graph refreshes when anything in the repository changes (folder watch
   on this computer) and every 10 s. The log is read again only when HEAD, the
   current branch or a ref moved; otherwise only the uncommitted row updates.
@@ -332,13 +360,15 @@ the project's folder while a file tab is in front.
   buttons beside the tab bar go here.
 - One mod folder, `mods/git-graph/`: `main.js`, `mod.json` (`"place":
   "none"`, `"focusable": true`), `graph.svg`, `tag.svg`, `refresh.svg`,
-  `search.svg`, `branch.svg`, `history.svg`, `fetch.svg`, and
+  `search.svg`, `branch.svg`, `history.svg`, `fetch.svg`, `stash.svg`,
+  `warning.svg`, and
   `actions.js` (the menu and dialogs, opened as overlays of this same mod:
   `openOverlay({ mod: "git-graph", kind: "popup", at: "pointer", props: {
   menu } })` or `kind: "dialog"` with `props: { dialog }`, both carrying the
   commit's facts: root, machine, hash, subject, merge, HEAD, current branch,
-  dirty, its branches with upstream/ahead/behind/gone, its remote branches);
-  it
+  dirty, its branches with upstream/ahead/behind/gone, its remote branches;
+  a stash row passes `stash: "stash@{n}"`, the uncommitted row `worktree:
+  true`, the banner `op` and its text); it
   also uses Herdr's `mods/pane/close.svg` and
   `mods/workspace-chrome/spinner.svg`. Every git call starts with
   `--no-optional-locks -c core.fsmonitor=false -c diff.autoRefreshIndex=false`
@@ -351,8 +381,17 @@ the project's folder while a file tab is in front.
     --format=%(refname:lstrip=2) refs/remotes` for the faded remotes, `status --porcelain=v1 -z --no-renames
     --untracked-files=all`, and `log --date-order -n<limit+1>
     --format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1e --branches --remotes
-    --tags HEAD` (not `--all`, which would draw stashes; just `HEAD` with
-    the branch toggle on). Details: `show -s`
+    --tags HEAD` (not `--all`, which would draw each stash's index and
+    untracked commits; just `HEAD` with the branch toggle on). Stashes: `stash
+    list --format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%gs%x1f%gd%x1e`, drawn
+    with their first parent only; the third parent, when there, holds the
+    untracked files (`diff <empty tree> <it>`). What's under way: one `sh`
+    script that finds `git rev-parse --absolute-git-dir` and checks, in this
+    order, `rebase-merge/` (head-name, onto, msgnum, end), `rebase-apply/`
+    (`applying` means am; next, last), `MERGE_HEAD` (MERGE_MSG's first line
+    names the branch), `CHERRY_PICK_HEAD`, `REVERT_HEAD` (`show -s` for the
+    short hash and subject) and `BISECT_LOG`. Conflicts are the `status`
+    entries with a `U` on either side, or `AA`/`DD`. Details: `show -s`
     for the message, and `diff <first parent> <commit>` with `--name-status
     -z --no-renames` and `--numstat -z` (a root commit, or an unborn HEAD,
     against the empty tree `4b825dc642cb6eb9a060e54bf8d69288fbee4904`). The
@@ -364,14 +403,18 @@ the project's folder while a file tab is in front.
     <path>`, where each record's fields end at a NUL followed by a newline
     and the file's path at that commit.
   - Actions run `git` without the read-only options, through `sh -c
-    'GIT_TERMINAL_PROMPT=0 exec git "$@"'` so a missing password fails
-    instead of waiting: `switch <branch>`, `switch --track <remote/branch>`,
+    'GIT_TERMINAL_PROMPT=0 GIT_EDITOR=true exec git "$@"'` so a missing
+    password fails and a commit message is taken as is, instead of waiting: `switch <branch>`, `switch --track <remote/branch>`,
     `switch --detach <hash>`, `branch <name> <hash>` or `switch -c <name>
     <hash>`, `branch -m`, `branch -d` (then `-D`), `cherry-pick <hash>`,
     `revert --no-edit <hash>` (stuck: `rev-parse -q --verify
     CHERRY_PICK_HEAD`/`REVERT_HEAD`, then `--abort`), `pull --ff-only`,
     `push <remote> <branch>:<upstream branch>` or `push -u origin <branch>`,
-    `fetch --all --prune` (network ones get 120 s). Copying uses `pbcopy`
+    `fetch --all --prune` (network ones get 120 s), `stash push [-u] [-m
+    <message>]`, `stash apply|pop|drop stash@{n}` (only after `rev-parse -q
+    --verify stash@{n}` still gives the row's hash: the numbers shift),
+    `merge|rebase|am|cherry-pick|revert --continue` and `--abort`, and `bisect
+    reset`. Copying uses `pbcopy`
     (else `wl-copy`, `xclip`, `xsel`). Afterwards the overlay sets shared
     `"git-graph.request"` `{ id, at, root, on }` and the graph with that
     repository refreshes (forced) on its next frame.
@@ -619,7 +662,13 @@ the project's folder while a file tab is in front.
   selecting one shows the diff under the old name. Right-clicking a commit
   on another branch offers "Cherry-pick onto main…"; confirming adds the
   commit to main and the graph shows it at once. Deleting an unmerged
-  branch asks a second time, "Delete Anyway".
+  branch asks a second time, "Delete Anyway". After `git stash -u`, a
+  "stash@{0}" row sits above HEAD with a square dot, and selecting it lists
+  the stashed and untracked files; Pop brings both back and the row goes. A
+  `git merge` that stops on a conflict shows "Merging <branch> into main ·
+  1 file with conflicts"; after `git add` it reads "No conflicts left" with
+  Continue, which makes the merge commit and the banner goes. A rebase that
+  stops shows "Rebasing topic onto main · step 2 of 2".
 - Settings → Look shows "Bench" with its preview; with it chosen
   (or after `layout.switch {"name":"Bench"}`), the tab bar's Files
   button opens the panel and it lists the focused terminal's folder with git marks.

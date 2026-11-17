@@ -40,7 +40,11 @@ with beside your agents.
   lists every commit that changed it, following renames. Right-click a
   commit to check it out, branch from it, cherry-pick or revert it, or to
   check out, pull, push, rename or delete a branch on it; Fetch in the header
-  updates the remotes. It follows new commits and
+  updates the remotes. Stashes show as rows on the commit they were made on,
+  with their diff; right-click one to apply, pop or drop it, or the
+  Uncommitted Changes row to stash. While a merge, rebase, cherry-pick,
+  revert or bisect is under way, a banner says so, counts the files still in
+  conflict, and offers Continue and Abort. It follows new commits and
   branches as they happen.
 - **A Scratchpad.** A note button after Files in the tab bar (or
   `cmd-shift-n`) opens an empty tab for quick plain-text notes that stays
@@ -85,11 +89,14 @@ menu, `open`, `pbcopy` (or `wl-copy`/`xclip`/`xsel`), `mkdir`, `cp -R -p` to
 paste a copy, `mv -n` to rename or paste a cut, and
 `/usr/bin/trash` (else Finder via `osascript`; `gio trash` or `trash-put` on
 Linux and SSH machines) to move to the Trash. The Git Graph runs `git`
-to read (`log`, `show`, `diff`, `status`, `for-each-ref`), and changes the
-repository only from its right-click menu and Fetch button: `switch`,
-`branch`, `cherry-pick`, `revert`, `pull --ff-only`, `push` (never forced)
-and `fetch --all --prune`, the last three reaching your remotes. Detaching
-HEAD, cherry-picking, reverting, deleting and pushing ask first. The Limits
+to read (`log`, `show`, `diff`, `status`, `for-each-ref`, `stash list`, and
+the files git keeps in `.git` during a merge or rebase), and changes the
+repository only from its right-click menu, its banner and Fetch button:
+`switch`, `branch`, `cherry-pick`, `revert`, `stash`, `--continue`/`--abort`
+of the operation under way, `bisect reset`, `pull --ff-only`, `push` (never
+forced) and `fetch --all --prune`, the last three reaching your remotes.
+Detaching HEAD, cherry-picking, reverting, deleting, pushing, stashing,
+dropping a stash and aborting ask first. The Limits
 panel runs `sh` to read `~/.cache/herdr-claude-limits/`, which
 `save-limits.sh` writes. Apart from the Git Graph's fetch, pull and push,
 none of this reaches the network or reads your Claude login. Scratchpad notes are kept

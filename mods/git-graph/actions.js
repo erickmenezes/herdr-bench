@@ -1,10 +1,13 @@
 // What a right-click on a commit offers, and the dialogs that ask before anything
-// that moves HEAD away from a branch, writes a commit, deletes or pushes. Both are
-// copies of this mod opened as overlays: props { menu } (a popup) or { dialog } (a
-// dialog), each with the commit's facts:
+// that moves HEAD away from a branch, writes a commit, deletes, pushes, drops a
+// stash or abandons a merge or rebase. Both are copies of this mod opened as
+// overlays: props { menu } (a popup) or { dialog } (a dialog), each with the
+// commit's facts:
 //   { root, on, hash, subject, merge, isHead, branch, dirty, branches, remotes }
 // branches: local branches at the commit, { name, current, upstream, ahead, behind, gone };
 // remotes: remote branches at it that no local branch of the same name rides with.
+// A stash row has { stash: "stash@{n}" } instead, the uncommitted-changes row
+// { worktree: true }; the banner over the graph passes { op, what }.
 // When git has run, REQUEST tells the graph of that repository to look again.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
@@ -14,12 +17,29 @@ export const REQUEST = "git-graph.request";
 const short = (hash) => hash.slice(0, 7);
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-// git in the repository. Network commands never stop to ask for a password: with
-// no credentials at hand they fail, and the error says so.
+// git in the repository. Nothing stops to ask: network commands fail without
+// credentials at hand (the error says so), and a commit message is taken as is.
 function git(m, args, timeout = 60000) {
-  return exec("sh", ["-c", 'GIT_TERMINAL_PROMPT=0 exec git "$@"', "git", ...args], { cwd: m.root, on: m.on, timeout })
+  return exec("sh", ["-c", 'GIT_TERMINAL_PROMPT=0 GIT_EDITOR=true exec git "$@"', "git", ...args], { cwd: m.root, on: m.on, timeout })
     .catch((e) => ({ code: -1, stdout: "", stderr: String(e?.message ?? e) }));
 }
+
+// A stash is named by its place in the list, which shifts as stashes come and go:
+// act on it only if it's still the one the row showed.
+async function sameStash(m) {
+  const r = await git(m, ["rev-parse", "-q", "--verify", m.stash]);
+  return r.code === 0 && r.stdout.trim() === m.hash;
+}
+
+// What finishing or abandoning each operation runs.
+const OPS = {
+  merge: { go: ["merge", "--continue"], stop: ["merge", "--abort"] },
+  rebase: { go: ["rebase", "--continue"], stop: ["rebase", "--abort"] },
+  am: { go: ["am", "--continue"], stop: ["am", "--abort"] },
+  "cherry-pick": { go: ["cherry-pick", "--continue"], stop: ["cherry-pick", "--abort"] },
+  revert: { go: ["revert", "--continue"], stop: ["revert", "--abort"] },
+  bisect: { stop: ["bisect", "reset"] },
+};
 
 const lastLine = (r) => (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean).pop() || "git failed";
 
@@ -33,6 +53,8 @@ async function copyText(text) {
 
 // [label, action, arg] rows; "-" divides, ["#", text] is a section heading.
 export function menuItems(m) {
+  if (m.worktree) return [["Stash Changes…", "stash"]];
+  if (m.stash) return [["#", m.stash], ["Apply", "stash-apply"], ["Pop", "stash-pop"], ["-"], ["Drop…", "stash-drop"], ["-"], ["Copy Hash", "copy-hash"]];
   const items = [];
   if (!m.isHead) items.push(["Check Out This Commit…", "detach"]);
   items.push(["New Branch Here…", "branch"]);
@@ -78,7 +100,26 @@ export function act(m, action, arg) {
         else notify({ title: "Couldn't pull", body: /fast-forward/i.test(r.stderr) ? `${arg} and its upstream have both moved on: merge or rebase in a terminal.` : lastLine(r), level: "error" });
       });
       break;
-    case "branch": case "rename": dialog(action, 214); break;
+    case "stash-apply": case "stash-pop": {
+      const pop = action === "stash-pop";
+      sameStash(m).then(async (same) => {
+        if (!same) { changed(m); notify({ title: "The stash list changed", body: "Look again and pick the stash once more.", level: "error" }); return; }
+        const r = await git(m, ["stash", pop ? "pop" : "apply", m.stash]);
+        changed(m);
+        if (r.code === 0) notify({ title: pop ? `Popped ${m.stash}` : `Applied ${m.stash}`, timeout: 2500 });
+        else if (/CONFLICT/.test(`${r.stdout}\n${r.stderr}`))
+          notify({ title: "Applied with conflicts", body: `Resolve them in the files; ${pop ? "the stash is kept until you drop it" : "the stash is kept"}.`, level: "warning" });
+        else notify({ title: `Couldn't ${pop ? "pop" : "apply"} ${m.stash}`, body: lastLine(r), level: "error" });
+      });
+      break;
+    }
+    case "continue":
+      git(m, OPS[arg].go).then((r) => {
+        changed(m);
+        if (r.code !== 0) notify({ title: `Couldn't continue the ${arg}`, body: lastLine(r), level: "error" });
+      });
+      break;
+    case "branch": case "rename": case "stash": dialog(action, 214); break;
     default: dialog(action, 200); break;
   }
 }
@@ -121,8 +162,27 @@ export class MenuView {
 // What each dialog says and does. `name`: it asks for a branch name.
 function plan(d) {
   const b = d.branches.find((x) => x.name === d.arg);
-  const commit = `${short(d.hash)} “${d.subject}”`;
+  const commit = d.hash ? `${short(d.hash)} “${d.subject}”` : "";
   switch (d.kind) {
+    case "stash": return {
+      title: "Stash changes", text: "Puts your uncommitted changes away and leaves the files as at the last commit. Untracked files stay unless you include them.",
+      name: "", optional: true, placeholder: "Message (optional)", ok: "Stash", alt: "Include Untracked",
+      args: (msg, alt) => ["stash", "push", ...(alt ? ["--include-untracked"] : []), ...(msg ? ["-m", msg] : [])] };
+    case "stash-drop": return {
+      title: `Drop ${d.stash}?`, text: `Deletes the stash “${d.subject}”. Its changes aren't anywhere else (git can still find it for about two weeks, by its hash ${short(d.hash)}).`,
+      ok: "Drop", danger: true, stash: true, args: () => ["stash", "drop", d.stash] };
+    case "abort": {
+      if (d.op === "bisect") return {
+        title: "Stop bisecting?", text: "Ends the bisect and checks out the branch or commit you started from.", ok: "Stop Bisecting", args: () => OPS.bisect.stop };
+      const undo = {
+        merge: `Puts ${d.branch ?? "HEAD"} and your files back as they were before the merge. Conflicts you've resolved so far are lost.`,
+        rebase: "Puts the branch back where it was before the rebase. Commits already replayed and conflicts resolved so far are dropped.",
+        am: "Puts the branch back as it was before the patches. Patches applied so far are dropped.",
+        "cherry-pick": "Puts the branch and files back as before the cherry-pick. Conflicts you've resolved so far are lost.",
+        revert: "Puts the branch and files back as before the revert. Conflicts you've resolved so far are lost.",
+      }[d.op];
+      return { title: `Abort: ${d.what}?`, text: undo, ok: "Abort", danger: true, args: () => OPS[d.op].stop };
+    }
     case "detach": return {
       title: `Check out ${short(d.hash)}?`,
       text: `HEAD will point at ${commit} and no branch${d.branch ? `; ${d.branch} stays where it is` : ""}. Commits made from here belong to no branch until you make one.`
@@ -169,7 +229,7 @@ export class DialogView {
     this.error = null; this.busy = false; this.stuck = null; this.forcing = false;
     this.handle = cx.focus_handle();
     if (this.p.name !== undefined) {
-      this.input = InputState.new({ value: this.p.name, placeholder: "branch-name" });
+      this.input = InputState.new({ value: this.p.name, placeholder: this.p.placeholder ?? "branch-name" });
       this.input.set_selected_range({ start: 0, end: this.p.name.length });
       this.input.on("change", (_e, cx) => { this.error = null; cx.notify(); });
       this.input.on("submit", (_e, cx) => this.confirm(cx, false));
@@ -188,13 +248,14 @@ export class DialogView {
     else if (p.name !== undefined) {
       const name = this.input.value().trim();
       if (name === p.name && d.kind === "rename") return this.close();
-      if (!name) { this.error = "Give it a name."; cx.notify(); return; }
+      if (!name && !p.optional) { this.error = "Give it a name."; cx.notify(); return; }
       args = p.args(name, alt);
     } else args = p.args();
     this.busy = true; this.error = null; cx.notify();
     cx.spawn(async (cx) => {
+      if (p.stash && !(await sameStash(d))) { this.busy = false; changed(d); this.error = "The stash list changed since: close this and pick the stash again."; cx.notify(); return; }
       // git's own rules for a branch name, before anything runs.
-      if (p.name !== undefined) {
+      if (p.name !== undefined && !p.optional) {
         const ok = await git(d, ["check-ref-format", "--branch", this.input.value().trim()]);
         if (ok.code !== 0) { this.busy = false; this.error = "That isn't a valid branch name."; cx.notify(); return; }
       }

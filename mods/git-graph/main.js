@@ -3,7 +3,7 @@
 import { View, div, svg, PathBuilder } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, v_virtual_list, VirtualListScrollHandle, InputState, Input } from "gpui-base";
 import { exec, readTextFile, watchFolder, theme, settings, props, nextCommand, openOverlay, shared, notify } from "herdr";
-import { MenuView, DialogView, menuHeight, REQUEST } from "./actions.js";
+import { MenuView, DialogView, menuHeight, act, REQUEST } from "./actions.js";
 
 const ROW = 26, LANE = 14, PAGE = 500, MAX_LANES = 24;
 const WORKTREE = "*";
@@ -163,11 +163,46 @@ function parseHistory(text) {
   });
 }
 
+// `stash list` with a "%x1e"-separated format. A stash is a commit whose first
+// parent is the commit it was made on, its second the index, and a third (with -u)
+// the untracked files. In the graph it hangs off the first only.
+function parseStashes(text) {
+  return text.split("\x1e").map((r) => r.replace(/^\n/, "")).filter(Boolean).map((r) => {
+    const [hash, parents, author, email, at, subject, ref] = r.split("\x1f");
+    const p = parents ? parents.split(" ") : [];
+    return { hash, parents: p.slice(0, 1), author, email, at: Number(at), subject, stash: { ref: ref.trim(), untracked: p[2] ?? null } };
+  });
+}
+
+// Whether git is partway through something, from the files it keeps meanwhile in
+// the git folder. Read-only: one line, fields split by \x1f, or nothing.
+const STATE_SCRIPT = `g=$(git rev-parse --absolute-git-dir 2>/dev/null) || exit 0
+r() { [ -f "$g/$1" ] && head -n1 "$g/$1"; }
+s() { git --no-optional-locks show -s --format=%h%x1f%s "$1" 2>/dev/null; }
+if [ -d "$g/rebase-merge" ]; then printf 'rebase\\037%s\\037%s\\037%s\\037%s\\n' "$(r rebase-merge/head-name)" "$(r rebase-merge/onto)" "$(r rebase-merge/msgnum)" "$(r rebase-merge/end)"
+elif [ -d "$g/rebase-apply" ]; then k=rebase; [ -f "$g/rebase-apply/applying" ] && k=am; printf '%s\\037%s\\037%s\\037%s\\037%s\\n' $k "$(r rebase-apply/head-name)" "$(r rebase-apply/onto)" "$(r rebase-apply/next)" "$(r rebase-apply/last)"
+elif [ -f "$g/MERGE_HEAD" ]; then printf 'merge\\037%s\\n' "$(r MERGE_MSG)"
+elif [ -f "$g/CHERRY_PICK_HEAD" ]; then printf 'cherry-pick\\037%s\\n' "$(s CHERRY_PICK_HEAD)"
+elif [ -f "$g/REVERT_HEAD" ]; then printf 'revert\\037%s\\n' "$(s REVERT_HEAD)"
+elif [ -f "$g/BISECT_LOG" ]; then printf 'bisect\\n'; fi`;
+
+function parseState(text) {
+  const line = text.trim();
+  if (!line) return null;
+  const [kind, ...f] = line.split("\x1f");
+  if (kind === "rebase" || kind === "am")
+    return { kind, branch: f[0]?.replace(/^refs\/heads\//, "") || null, onto: f[1] || null, step: Number(f[2]) || 0, steps: Number(f[3]) || 0 };
+  if (kind === "merge") return { kind, message: f[0] ?? "" };
+  if (kind === "cherry-pick" || kind === "revert") return { kind, hash: f[0] ?? "", subject: f[1] ?? "" };
+  if (kind === "bisect") return { kind };
+  return null;
+}
+
 // Whether a commit matches every word of a search: in its subject, author, email
 // or ref names, or as the start of its hash.
 function matches(c, words, refs) {
   if (c.hash === WORKTREE) return false;
-  const text = [c.subject, c.author, c.email, ...(refs.get(c.hash) ?? []).map((r) => r.name)].join("\n").toLowerCase();
+  const text = [c.subject, c.author, c.email, ...(refs.get(c.hash) ?? []).map((r) => r.name), ...(c.stash ? ["stash", c.stash.ref] : [])].join("\n").toLowerCase();
   return words.every((w) => text.includes(w) || c.hash.startsWith(w));
 }
 
@@ -186,6 +221,7 @@ export default class GitGraph extends View {
     // File history: { path, list, loading }, the commits that changed one file.
     this.history = null;
     this.query = ""; this.only = false; this.merged = new Set(); this.track = null;
+    this.stashes = []; this.state = null; this.conflicts = 0;
     this.search = InputState.new({ placeholder: "Search commits" });
     this.search.on("change", (_e, cx) => this.setQuery(this.search.value(), cx));
     this.search.on("submit", (_e, cx) => { this.handle.focus(); if (this.commits.length) this.select(this.commits[0].hash, cx); });
@@ -223,13 +259,15 @@ export default class GitGraph extends View {
     this.loading = true;
     cx.spawn(async (cx) => {
       try {
-        const [head, branch, refs, status, merged] = await Promise.all([
+        const [head, branch, refs, status, merged, stashes, state] = await Promise.all([
           this.git(["rev-parse", "--verify", "-q", "HEAD"]),
           this.git(["symbolic-ref", "-q", "--short", "HEAD"]),
           this.git(["for-each-ref", "--format=%(objectname)%00%(*objectname)%00%(refname)%00%(upstream:short)%00%(upstream:track,nobracket)", "refs/heads", "refs/remotes", "refs/tags"]),
           this.git(["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"]),
           // Remote branches already in HEAD's history, drawn faded (fails, harmlessly, on an unborn HEAD).
           this.git(["for-each-ref", "--merged=HEAD", "--format=%(refname:lstrip=2)", "refs/remotes"]),
+          this.git(["stash", "list", "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%gs%x1f%gd%x1e"]),
+          exec("sh", ["-c", STATE_SCRIPT], { cwd: this.root, on: this.on, timeout: 20000 }).catch(() => ({ code: 1, stdout: "" })),
         ]);
         if (status.code !== 0) throw new Error(status.stderr.trim() || "git status failed");
         this.head = head.code === 0 ? head.stdout.trim() : null;
@@ -253,7 +291,12 @@ export default class GitGraph extends View {
           if (this.history) this.loadHistory(this.history.path, cx);
         }
         this.track = this.branch ? [...this.refs.values()].flat().find((r) => r.kind === "branch" && r.name === this.branch)?.track ?? null : null;
-        this.dirty = status.stdout.split("\0").filter(Boolean).length;
+        const entries = status.stdout.split("\0").filter(Boolean);
+        this.dirty = entries.length;
+        // Unmerged paths: either side "U", or both added or both deleted.
+        this.conflicts = entries.filter((s) => { const xy = s.slice(0, 2); return xy.includes("U") || xy === "AA" || xy === "DD"; }).length;
+        this.stashes = stashes.code === 0 ? parseStashes(stashes.stdout) : [];
+        this.state = state.code === 0 ? parseState(state.stdout) : null;
         this.build();
         this.error = null;
         if (this.selected === WORKTREE && !this.dirty) this.select(null, cx);
@@ -270,6 +313,15 @@ export default class GitGraph extends View {
 
   build() {
     const list = this.raw.map((c) => ({ ...c }));
+    // Each stash sits above the commit it was made on, among the commits by date.
+    // With the current branch only, a stash made elsewhere is left out.
+    for (const s of this.stashes) {
+      const base = list.findIndex((c) => c.hash === s.parents[0]);
+      if (base < 0 && (this.only || !s.parents.length)) continue;
+      const older = list.findIndex((c) => !c.stash && c.at < s.at);
+      const at = base < 0 ? (older < 0 ? list.length : older) : older < 0 ? base : Math.min(base, older);
+      list.splice(at, 0, { ...s, stash: { ...s.stash } });
+    }
     if (this.dirty) list.unshift({ hash: WORKTREE, parents: this.head ? [this.head] : [], author: "", at: 0, subject: `Uncommitted Changes (${this.dirty})` });
     this.width = layoutGraph(list);
     this.all = list;
@@ -367,16 +419,25 @@ export default class GitGraph extends View {
       try {
         let info = null;
         const range = this.range(c), flags = ["-z", "--no-renames"];
-        const [names, nums, show, others] = await Promise.all([
+        // A stash made with -u keeps its untracked files in a commit of their own.
+        const kept = c.stash?.untracked ?? null;
+        const [names, nums, show, others, keptNames, keptNums] = await Promise.all([
           this.git([...range, "--name-status", ...flags]),
           this.git([...range, "--numstat", ...flags]),
           hash === WORKTREE ? null : this.git(["show", "-s", "--format=%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%B", hash]),
           // Untracked files, which no diff lists.
           hash === WORKTREE ? this.git(["ls-files", "--others", "--exclude-standard", "-z"]) : null,
+          kept ? this.git(["diff", EMPTY_TREE, kept, "--name-status", ...flags]) : null,
+          kept ? this.git(["diff", EMPTY_TREE, kept, "--numstat", ...flags]) : null,
         ]);
         if (names.code !== 0) throw new Error(names.stderr.trim());
         const files = nameStatus(names.stdout), counts = lineCounts(nums.stdout);
         for (const f of files) Object.assign(f, counts.get(f.path));
+        if (keptNames?.code === 0) {
+          const keptCounts = lineCounts(keptNums?.stdout ?? "");
+          for (const f of nameStatus(keptNames.stdout))
+            if (files.length < MAX_FILES && !files.some((x) => x.path === f.path)) files.push({ ...f, ...keptCounts.get(f.path), from: kept });
+        }
         if (others) for (const path of others.stdout.split("\0").filter(Boolean).slice(0, MAX_FILES - files.length))
           files.push({ path, status: "A", untracked: true, add: 0, del: 0 });
         files.sort((x, y) => x.path.localeCompare(y.path));
@@ -413,7 +474,8 @@ export default class GitGraph extends View {
       else if (text.includes("\0")) rows = [{ type: "note", text: "Binary file" }];
       else { const made = addedFile(text); rows = made.rows; file.add = made.added; }
     } else {
-      const r = await this.git([...this.range(c), "--no-color", "--no-ext-diff", "--no-textconv", "--", path]).catch((e) => ({ code: 1, stderr: String(e) }));
+      const range = file.from ? ["diff", EMPTY_TREE, file.from] : this.range(c);
+      const r = await this.git([...range, "--no-color", "--no-ext-diff", "--no-textconv", "--", path]).catch((e) => ({ code: 1, stderr: String(e) }));
       if (r.code !== 0) rows = [{ type: "note", text: `Can't show this diff: ${r.stderr.trim()}` }];
       else {
         rows = parsePatch(r.stdout);
@@ -461,11 +523,12 @@ export default class GitGraph extends View {
     }
     if (n > 0) for (const j of g.into) if (j < MAX_LANES) draw(curve(stroke(dashed(j, g.before[j])), x(j), 0, x(g.lane), cy), j);
     if (n > 0) for (const k of g.out) if (k < MAX_LANES) draw(curve(stroke(false), x(g.lane), cy, x(k), ROW), k);
-    const head = c.hash === this.head, worktree = c.hash === WORKTREE, col = color(g.lane);
-    const dot = div().absolute().left(x(g.lane) - 4).top(cy - 4).size(8).rounded(4)
+    const head = c.hash === this.head, worktree = c.hash === WORKTREE, stash = Boolean(c.stash), col = color(g.lane);
+    // A stash is a hollow square; HEAD a hollow circle; the worktree a faint one.
+    const dot = div().absolute().left(x(g.lane) - 4).top(cy - 4).size(8).rounded(stash ? 1.5 : 4)
       .when(worktree, (e) => e.border_1().border_color(t.muted).bg(t.background))
-      .when(head, (e) => e.border_2().border_color(col).bg(t.background))
-      .when(!head && !worktree, (e) => e.bg(col));
+      .when(head || stash, (e) => e.border_2().border_color(col).bg(t.background))
+      .when(!head && !worktree && !stash, (e) => e.bg(col));
     return div().relative().h(ROW).w(this.graphWidth()).flex_none().overflow_hidden().children(paths).when(g.lane < MAX_LANES, (e) => e.child(dot));
   }
 
@@ -475,6 +538,8 @@ export default class GitGraph extends View {
     const base = h_flex().h(18).px(5).gap(4).flex_none().items_center().rounded(4).text_size(11);
     if (ref.kind === "tag")
       return base.bg(t.raised).text_color(t.muted).child(svg("mods/git-graph/tag.svg").size(10).flex_none()).child(ref.name);
+    if (ref.kind === "stash")
+      return base.border_1().border_color(col).text_color(t.muted).child(svg("mods/git-graph/stash.svg").size(10).flex_none().text_color(col)).child(ref.name);
     if (ref.kind === "remote") {
       // Already merged into HEAD (and not this branch's own upstream): faded.
       const done = this.merged.has(ref.name) && ref.name !== this.track?.upstream;
@@ -517,8 +582,9 @@ export default class GitGraph extends View {
       .child(this.graphCell(c, t, pal))
       .child(h_flex().flex_1().min_w(0).pl(4).pr(10).gap(5).items_center()
         .when(detached, (e) => e.child(this.label({ kind: "branch", name: "HEAD", remotes: [] }, col, t)))
+        .when(Boolean(c.stash), (e) => e.child(this.label({ kind: "stash", name: c.stash?.ref }, col, t)))
         .children(refs.map((r) => this.label(r, col, t)))
-        .child(div().flex_1().min_w(0).truncate().when(worktree, (e) => e.text_color(t.muted).italic()).child(c.subject || " ")))
+        .child(div().flex_1().min_w(0).truncate().when(worktree, (e) => e.text_color(t.muted).italic()).when(Boolean(c.stash), (e) => e.text_color(t.muted)).child(c.subject || " ")))
       .when(cols.date, (e) => e.child(div().w(140).flex_none().pr(10).truncate().text_color(t.muted).child(worktree ? "" : formatDate(c.at))))
       .when(cols.author, (e) => e.child(div().w(150).flex_none().pr(10).truncate().text_color(t.muted).child(c.author)))
       .child(div().w(76).flex_none().pr(12).font_family(this.mono()).text_size(11).text_color(t.dim).child(worktree ? "*" : c.hash.slice(0, 7)));
@@ -559,14 +625,14 @@ export default class GitGraph extends View {
         .when(f.add > 0, (e) => e.child(div().text_color(t.ansi2).child(`+${f.add}`)))
         .when(f.del > 0, (e) => e.child(div().text_color(t.ansi1).child(`-${f.del}`))))
       .child(div().id(`status-${f.path}`).w(16).h(16).flex_none().flex().items_center().justify_center().rounded(3).bg(tone + "26").text_color(tone).text_size(10).font_semibold()
-        .tooltip(f.untracked ? "Untracked" : { A: "Added", D: "Deleted", U: "Unmerged", M: "Modified" }[f.status]).child(f.status));
+        .tooltip(f.untracked ? "Untracked" : f.from ? "Untracked when stashed" : { A: "Added", D: "Deleted", U: "Unmerged", M: "Modified" }[f.status]).child(f.status));
   }
 
   // Over the diff: the file's path, and a button for its history (not for a file
   // git doesn't track yet, nor the one whose history is already showing).
   diffBar(f, t) {
     const now = this.history && (f.path === this.history.path || f.path === this.historyPath(this.selected));
-    const can = !f.untracked && !now;
+    const can = !f.untracked && !f.from && !now;
     return h_flex().h(28).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
       .child(div().flex_1().min_w(0).truncate().font_family(this.mono()).text_size(11).text_color(t.muted).child(f.path))
       .when(can, (e) => e.child(h_flex().id("file-history").h(22).px(7).gap(5).flex_none().items_center().rounded(5).cursor_pointer()
@@ -604,8 +670,9 @@ export default class GitGraph extends View {
       .on_click((_e, cx) => this.select(hash, cx)).child(hash.slice(0, 7));
     const body = d ? d.message.split("\n").slice(1).join("\n").trim() : "";
     const info = worktree ? [] : [
+      ...(c.stash ? [field("Stash", div().font_family(this.mono()).text_size(11).child(c.stash.ref))] : []),
       field("Commit", div().font_family(this.mono()).text_size(11).child(c.hash)),
-      field("Parents", c.parents.length ? h_flex().gap(8).children(c.parents.map(shortLink)) : div().text_color(t.dim).child("none")),
+      field(c.stash ? "Made on" : "Parents", c.parents.length ? h_flex().gap(8).children(c.parents.map(shortLink)) : div().text_color(t.dim).child("none")),
       ...(d ? [
         field("Author", div().truncate().child(`${d.author} <${d.email}>`)),
         field("Date", div().child(formatDate(d.at))),
@@ -643,13 +710,52 @@ export default class GitGraph extends View {
           .when(!this.open && this.files.length > 0, (e) => e.child(div().absolute().top(8).px(12).text_color(t.dim).child("Pick a file to see its diff"))))));
   }
 
-  // The facts the menu and its dialogs need about a commit.
+  // While git is partway through a merge, rebase, cherry-pick, revert, am or
+  // bisect: what it is, how many files still have conflicts, and the ways out.
+  banner(t) {
+    const s = this.state, short = (h) => (h ?? "").slice(0, 7);
+    const named = (hash) => (this.refs.get(hash) ?? []).find((r) => r.kind !== "tag")?.name ?? short(hash);
+    const into = this.branch ? ` into ${this.branch}` : "";
+    const what = {
+      merge: () => { const from = /'([^']+)'/.exec(s.message)?.[1]; return from ? `Merging ${from}${into}` : `Merging${into}`; },
+      rebase: () => `Rebasing ${s.branch ?? "HEAD"}${s.onto ? ` onto ${named(s.onto)}` : ""}`,
+      am: () => "Applying patches",
+      "cherry-pick": () => `Cherry-picking ${s.hash} “${s.subject}”`,
+      revert: () => `Reverting ${s.hash} “${s.subject}”`,
+      bisect: () => "Bisecting",
+    }[s.kind]();
+    const step = (s.kind === "rebase" || s.kind === "am") && s.steps ? `step ${Math.min(s.step, s.steps)} of ${s.steps}` : "";
+    const left = s.kind === "bisect" ? "" : this.conflicts
+      ? `${this.conflicts} file${this.conflicts === 1 ? "" : "s"} with conflicts`
+      : "No conflicts left";
+    const m = { root: this.root, on: this.on ?? null, branches: [], op: s.kind, what };
+    const button = (id, text, tip, primary, action) => h_flex().id(id).h(22).px(8).flex_none().items_center().rounded(5).cursor_pointer().text_size(11)
+      .when(primary, (e) => e.bg(t.solid).text_color(t.solid_foreground)).when(!primary, (e) => e.border_1().border_color(t.border).text_color(t.foreground))
+      .hover((st) => st.opacity(0.85)).tooltip(tip).on_click(action).child(text);
+    return h_flex().h(32).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).bg(t.ansi3 + "1f").text_size(12)
+      .child(svg("mods/git-graph/warning.svg").size(13).flex_none().text_color(t.ansi3))
+      .child(div().flex_none().max_w(520).truncate().font_semibold().child(what))
+      .when(Boolean(step), (e) => e.child(div().flex_none().text_size(11).text_color(t.muted).child(step)))
+      .when(Boolean(left), (e) => e.child(div().min_w(0).truncate().text_size(11).text_color(this.conflicts ? t.ansi3 : t.muted).child(left)))
+      .child(div().flex_1())
+      .when(s.kind !== "bisect" && !this.conflicts, (e) => e.child(button("op-continue", "Continue", `git ${s.kind} --continue`, true, () => act(m, "continue", s.kind))))
+      .child(button("op-abort", s.kind === "bisect" ? "Stop Bisecting…" : "Abort…", s.kind === "bisect" ? "git bisect reset" : `git ${s.kind} --abort`, false, () => act(m, "abort", s.kind)));
+  }
+
+  // The facts the menu and its dialogs need about a commit (or a stash, or the
+  // uncommitted changes).
   openMenu(key, cx) {
     const c = this.commit(key);
-    if (!c || c.hash === WORKTREE || !this.root) return;
+    if (!c || !this.root) return;
     this.handle.focus();
     if (this.selected !== key) this.select(key, cx);
     const refs = this.refs.get(c.hash) ?? [];
+    const special = c.hash === WORKTREE ? { worktree: true } : c.stash ? { stash: c.stash.ref } : null;
+    if (special) {
+      const menu = { root: this.root, on: this.on ?? null, hash: c.hash, subject: c.subject, branch: this.branch, branches: [], remotes: [], ...special };
+      openOverlay({ mod: "git-graph", kind: "popup", at: "pointer", width: 250, height: menuHeight(menu), props: { menu } });
+      return;
+    }
     const menu = {
       root: this.root, on: this.on ?? null, hash: c.hash, subject: c.subject, merge: c.parents.length > 1,
       isHead: c.hash === this.head, branch: this.branch, dirty: this.dirty > 0,
@@ -741,6 +847,7 @@ export default class GitGraph extends View {
         .child(div().id("refresh").size(24).flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(t.dim)
           .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Refresh")
           .on_click((_e, cx) => this.refresh(cx, true)).child(svg("mods/git-graph/refresh.svg").size(13))))
+      .when(Boolean(this.state), (e) => e.child(this.banner(t)))
       .when(Boolean(this.history), (e) => e.child(this.historyBar(t)))
       .child(h_flex().h(26).flex_none().items_center().border_b(1).border_color(t.border).text_size(11).text_color(t.dim)
         .child(div().w(this.graphWidth()).flex_none().pl(8).child("Graph"))
