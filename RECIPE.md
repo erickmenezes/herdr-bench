@@ -277,17 +277,28 @@ the project's folder while a file tab is in front.
   The uncommitted row lists the working tree's changes against HEAD plus
   untracked files (shown as all-added).
 - Typing in the search box (or `/`, ⌘F from the list) narrows the list to
-  the loaded commits matching every word, in the subject, author, email or a
+  the commits matching every word, in the subject, author, email or a
   ref name, or as the start of the hash; the rows keep their lane colour but
-  draw no lines. Enter or ↓ goes to the first result, Esc clears the search.
+  draw no lines. When the graph holds only part of the history, the first
+  search reads all of it once (`log --date-order -n100001` from the same
+  starting points; at most 100000 commits, "N of 100000+"), "Searching all
+  history…" meanwhile, and again only after the refs move; matches past the
+  loaded ones come after them, in the first lane colour, with no "Load
+  more" row. Enter or ↓ goes to the first result, Esc clears the search.
   A selected commit stays open while the search changes. The branch toggle
   reads the log from HEAD only.
 - "History" over a diff replaces the graph with the commits that changed
-  that file, from HEAD back and across renames (at most 2000), drawn like
+  that file, on the branches the graph shows (HEAD only with the toggle
+  on) and across renames (at most 2000), drawn like
   search results, under a 30px `surface` strip: clock icon (`accent`),
   "History of <name>" (semibold), the folder (`dim`), "N commits" and "Back
   to graph" (Esc). Search narrows the history too. Selecting a commit opens
-  that file's diff in it, under the name it had then. Back in the graph,
+  that file's diff in it, under the name it had then. At the commit that
+  renamed it (its name differs from the next older entry's), the file is one
+  "R" row (`ansi6`, tooltip "Renamed from <old>"; the old name's "D" row
+  dropped) and its diff is `diff --find-renames=20% <parent> <commit> --
+  <old> <new>` under a "Renamed from <old>" note, counts taken from that
+  diff. Back in the graph,
   the selected commit stays selected.
 - Right-clicking a commit (not the uncommitted row) selects it and opens a
   250px menu at the pointer (`popover`, 31px rows, `selected` on the
@@ -399,8 +410,8 @@ the project's folder while a file tab is in front.
     --exclude-standard -z`, and reads untracked files directly. A file's diff
     is `diff … --no-color --no-ext-diff --no-textconv -- <path>`, parsed from
     the first `@@` on. A file's history: `log --follow -n2000
-    --format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s --name-only -z HEAD --
-    <path>`, where each record's fields end at a NUL followed by a newline
+    --format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s --name-only -z
+    <the graph's starting points> -- <path>`, where each record's fields end at a NUL followed by a newline
     and the file's path at that commit.
   - Actions run `git` without the read-only options, through `sh -c
     'GIT_TERMINAL_PROMPT=0 GIT_EDITOR=true exec git "$@"'` so a missing
@@ -659,7 +670,10 @@ the project's folder while a file tab is in front.
   commit's subject leaves only that commit ("1 of N"); on a branch one commit
   ahead of its upstream, the branch pill reads "↑1". In a repo where a file
   was renamed, its History lists the commits from before the rename, and
-  selecting one shows the diff under the old name. Right-clicking a commit
+  selecting one shows the diff under the old name; the renaming commit shows
+  one "R" file with only the lines that changed, and a commit to the file on
+  an unmerged branch is listed too. In a repo with more than 500 commits,
+  searching a word from the oldest commit's subject finds it. Right-clicking a commit
   on another branch offers "Cherry-pick onto main…"; confirming adds the
   commit to main and the graph shows it at once. Deleting an unmerged
   branch asks a second time, "Delete Anyway". After `git stash -u`, a

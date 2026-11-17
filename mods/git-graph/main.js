@@ -11,7 +11,8 @@ const WORKTREE = "*";
 // index or an fsmonitor cookie would wake our own watch and loop the refresh.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"; // what an unborn HEAD is compared to
-const MAX_DIFF_ROWS = 2000, MAX_LINE = 2000, MAX_FILES = 1000, MAX_HISTORY = 2000;
+const MAX_DIFF_ROWS = 2000, MAX_LINE = 2000, MAX_FILES = 1000, MAX_HISTORY = 2000, MAX_SEARCH = 100000;
+const LOG_FORMAT = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1e";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -128,6 +129,14 @@ function parseRefs(text) {
   const order = { branch: 0, remote: 1, tag: 2 };
   for (const list of byHash.values()) list.sort((a, b) => order[a.kind] - order[b.kind]);
   return byHash;
+}
+
+// `log` with LOG_FORMAT: one commit per record.
+function parseLog(text) {
+  return text.split("\x1e").map((r) => r.replace(/^\n/, "")).filter(Boolean).map((r) => {
+    const [hash, parents, author, email, at, subject] = r.split("\x1f");
+    return { hash, parents: parents ? parents.split(" ") : [], author, email, at: Number(at), subject };
+  });
 }
 
 // `--name-status -z`: a status letter and a path, each NUL-terminated.
@@ -277,17 +286,14 @@ export default class GitGraph extends View {
         if (force || key !== this.key) {
           this.key = key;
           this.refs = parseRefs(refs.stdout);
-          const starts = this.only && this.head ? ["HEAD"] : ["--branches", "--remotes", "--tags", ...(this.head ? ["HEAD"] : [])];
+          this.starts = this.only && this.head ? ["HEAD"] : ["--branches", "--remotes", "--tags", ...(this.head ? ["HEAD"] : [])];
           const log = this.head || this.refs.size
-            ? await this.git(["log", "--date-order", `-n${this.limit + 1}`, "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1e", ...starts])
+            ? await this.git(["log", "--date-order", `-n${this.limit + 1}`, LOG_FORMAT, ...this.starts])
             : { code: 0, stdout: "" };
           if (log.code !== 0) throw new Error(log.stderr.trim() || "git log failed");
-          const records = log.stdout.split("\x1e").map((r) => r.replace(/^\n/, "")).filter(Boolean);
+          const records = parseLog(log.stdout);
           this.more = records.length > this.limit;
-          this.raw = records.slice(0, this.limit).map((r) => {
-            const [hash, parents, author, email, at, subject] = r.split("\x1f");
-            return { hash, parents: parents ? parents.split(" ") : [], author, email, at: Number(at), subject };
-          });
+          this.raw = records.slice(0, this.limit);
           if (this.history) this.loadHistory(this.history.path, cx);
         }
         this.track = this.branch ? [...this.refs.values()].flat().find((r) => r.kind === "branch" && r.name === this.branch)?.track ?? null : null;
@@ -299,6 +305,7 @@ export default class GitGraph extends View {
         this.state = state.code === 0 ? parseState(state.stdout) : null;
         this.build();
         this.error = null;
+        this.searchDeep(cx);
         if (this.selected === WORKTREE && !this.dirty) this.select(null, cx);
         else if (this.selected && !this.commit(this.selected)) this.select(null, cx);
         else if (this.selected === WORKTREE) this.loadDetail(WORKTREE, cx, true);
@@ -329,11 +336,40 @@ export default class GitGraph extends View {
     // A file's history replaces the graph; it keeps each commit's lane colour.
     const shown = this.history ? this.history.list : list;
     if (this.history) for (const c of shown)
-      c.graph = { lane: this.commit(c.hash)?.graph.lane ?? 0, hasChild: false, into: [], out: [], before: [], after: [] };
-    // While searching, the list holds only the matches (drawn without lines).
+      c.graph = { lane: this.all[this.allIndex.get(c.hash)]?.graph.lane ?? 0, hasChild: false, into: [], out: [], before: [], after: [] };
+    // While searching, the list holds only the matches (drawn without lines);
+    // with more history than loaded, the rest of it too, once read (searchDeep).
     const words = this.query.toLowerCase().split(/\s+/).filter(Boolean);
     this.commits = words.length ? shown.filter((c) => matches(c, words, this.refs)) : shown;
+    if (words.length && !this.history && this.deepReady())
+      for (const c of this.deep.rest) if (matches(c, words, this.refs)) this.commits.push(c);
     this.index = new Map(this.commits.map((c, i) => [c.hash, i]));
+  }
+
+  // A search reads the whole history (up to MAX_SEARCH commits) once, when the
+  // graph has more than it loaded; again only when the refs move.
+  deepReady() { return Boolean(this.deep && !this.deep.loading && this.deep.key === this.key); }
+
+  searchDeep(cx) {
+    if (!this.query.trim() || this.history || !this.more || !this.root) return;
+    if (this.deep && this.deep.key === this.key) return;
+    const key = this.key, starts = this.starts;
+    this.deep = { key, loading: true, rest: [], total: 0, capped: false };
+    cx.spawn(async (cx) => {
+      const r = await this.git(["log", "--date-order", `-n${MAX_SEARCH + 1}`, LOG_FORMAT, ...starts]).catch((e) => ({ code: 1, stderr: String(e) }));
+      if (this.deep?.key !== key) return;
+      const list = r.code === 0 ? parseLog(r.stdout) : [];
+      const capped = list.length > MAX_SEARCH;
+      if (capped) list.length = MAX_SEARCH;
+      // The loaded commits are the first of these; the rest have no lane, so
+      // their dots take the first colour.
+      const loaded = new Set(this.raw.map((c) => c.hash));
+      const rest = list.filter((c) => !loaded.has(c.hash));
+      for (const c of rest) c.graph = { lane: 0, hasChild: false, into: [], out: [], before: [], after: [] };
+      this.deep = { key, loading: false, rest, index: new Map(rest.map((c) => [c.hash, c])), total: list.length, capped, error: r.code === 0 ? null : r.stderr.trim() };
+      this.build();
+      cx.notify();
+    });
   }
 
   // Lines between rows only make sense for the full graph.
@@ -344,11 +380,11 @@ export default class GitGraph extends View {
   commit(hash) {
     const i = this.allIndex?.get(hash);
     if (i !== undefined) return this.all[i];
-    return this.history?.list.find((c) => c.hash === hash);
+    return this.history?.list.find((c) => c.hash === hash) ?? this.deep?.index?.get(hash);
   }
 
-  // The commits that changed a file, newest first, from HEAD back, following
-  // renames. Selecting one opens that file's diff in it.
+  // The commits that changed a file, newest first, on the branches the graph
+  // shows (HEAD only with the toggle on), following renames. Selecting one opens that file's diff in it.
   showHistory(path, cx) {
     this.history = { path, list: [], loading: true };
     this.build(); this.scroll.scroll_to_item(0);
@@ -358,8 +394,8 @@ export default class GitGraph extends View {
 
   loadHistory(path, cx) {
     cx.spawn(async (cx) => {
-      const r = this.head
-        ? await this.git(["log", "--follow", `-n${MAX_HISTORY}`, "--format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s", "--name-only", "-z", "HEAD", "--", path]).catch((e) => ({ code: 1, stderr: String(e) }))
+      const r = this.head || this.refs.size
+        ? await this.git(["log", "--follow", `-n${MAX_HISTORY}`, "--format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s", "--name-only", "-z", ...(this.starts ?? ["HEAD"]), "--", path]).catch((e) => ({ code: 1, stderr: String(e) }))
         : { code: 0, stdout: "" };
       if (this.history?.path !== path) return;
       this.history = { path, list: r.code === 0 ? parseHistory(r.stdout) : [], loading: false, error: r.code === 0 ? null : r.stderr.trim() };
@@ -374,6 +410,12 @@ export default class GitGraph extends View {
     return this.history.list.find((c) => c.hash === hash)?.path ?? this.history.path;
   }
 
+  // In a file's history, the name it had before the commit that renamed it.
+  renamedFrom(hash) {
+    const list = this.history?.list ?? [], i = list.findIndex((c) => c.hash === hash);
+    return i >= 0 && list[i + 1] && list[i + 1].path !== list[i].path ? list[i + 1].path : null;
+  }
+
   closeHistory(cx) {
     const keep = this.selected;
     this.history = null;
@@ -386,6 +428,7 @@ export default class GitGraph extends View {
   setQuery(text, cx) {
     if (text === this.query) return;
     this.query = text;
+    this.searchDeep(cx);
     this.build();
     this.scroll.scroll_to_item(0);
     cx.notify();
@@ -440,6 +483,14 @@ export default class GitGraph extends View {
         }
         if (others) for (const path of others.stdout.split("\0").filter(Boolean).slice(0, MAX_FILES - files.length))
           files.push({ path, status: "A", untracked: true, add: 0, del: 0 });
+        // The commit that renamed the file whose history shows: one renamed file,
+        // not an added one and a deleted one.
+        const old = this.renamedFrom(hash), moved = old && files.find((f) => f.path === this.historyPath(hash));
+        if (moved) {
+          moved.status = "R"; moved.renamedFrom = old;
+          const gone = files.findIndex((f) => f.path === old && f.status === "D");
+          if (gone >= 0) files.splice(gone, 1);
+        }
         files.sort((x, y) => x.path.localeCompare(y.path));
         if (show) {
           const [author, email, at, committer, cemail, ct, ...body] = show.stdout.split("\x1f");
@@ -475,10 +526,16 @@ export default class GitGraph extends View {
       else { const made = addedFile(text); rows = made.rows; file.add = made.added; }
     } else {
       const range = file.from ? ["diff", EMPTY_TREE, file.from] : this.range(c);
-      const r = await this.git([...range, "--no-color", "--no-ext-diff", "--no-textconv", "--", path]).catch((e) => ({ code: 1, stderr: String(e) }));
+      // A rename: both names, with git's rename detection on.
+      const paths = file.renamedFrom ? ["--find-renames=20%", "--", file.renamedFrom, path] : ["--", path];
+      const r = await this.git([...range, "--no-color", "--no-ext-diff", "--no-textconv", ...paths]).catch((e) => ({ code: 1, stderr: String(e) }));
       if (r.code !== 0) rows = [{ type: "note", text: `Can't show this diff: ${r.stderr.trim()}` }];
       else {
         rows = parsePatch(r.stdout);
+        if (file.renamedFrom) {
+          file.add = rows.filter((x) => x.type === "add").length; file.del = rows.filter((x) => x.type === "del").length;
+          rows.unshift({ type: "note", text: rows.length ? `Renamed from ${file.renamedFrom}` : `Renamed from ${file.renamedFrom}, with no changes` });
+        }
         if (!rows.length) rows = [{ type: "note", text: file.binary ? "Binary file" : "No changes to show (mode or empty file)" }];
       }
     }
@@ -614,7 +671,7 @@ export default class GitGraph extends View {
   // status badge (Added, Modified, Deleted, Unmerged; untracked counts as added).
   fileRow(f, t) {
     const slash = f.path.lastIndexOf("/"), name = f.path.slice(slash + 1), folder = slash < 0 ? "" : f.path.slice(0, slash);
-    const tone = { A: t.ansi2, D: t.ansi1, U: t.ansi3, M: t.ansi4 }[f.status];
+    const tone = { A: t.ansi2, D: t.ansi1, U: t.ansi3, M: t.ansi4, R: t.ansi6 }[f.status];
     const open = this.open === f.path;
     return h_flex().id(`file-${f.path}`).h(24).flex_none().pl(8).pr(4).gap(6).items_center().rounded(5).cursor_pointer()
       .bg(open ? t.selected : t.background).hover((s) => s.bg(open ? t.selected : t.hover))
@@ -625,7 +682,7 @@ export default class GitGraph extends View {
         .when(f.add > 0, (e) => e.child(div().text_color(t.ansi2).child(`+${f.add}`)))
         .when(f.del > 0, (e) => e.child(div().text_color(t.ansi1).child(`-${f.del}`))))
       .child(div().id(`status-${f.path}`).w(16).h(16).flex_none().flex().items_center().justify_center().rounded(3).bg(tone + "26").text_color(tone).text_size(10).font_semibold()
-        .tooltip(f.untracked ? "Untracked" : f.from ? "Untracked when stashed" : { A: "Added", D: "Deleted", U: "Unmerged", M: "Modified" }[f.status]).child(f.status));
+        .tooltip(f.untracked ? "Untracked" : f.from ? "Untracked when stashed" : f.renamedFrom ? `Renamed from ${f.renamedFrom}` : { A: "Added", D: "Deleted", U: "Unmerged", M: "Modified" }[f.status]).child(f.status));
   }
 
   // Over the diff: the file's path, and a button for its history (not for a file
@@ -793,7 +850,8 @@ export default class GitGraph extends View {
     this.answer(cx);
     const t = theme(), pal = this.palette(t);
     const cols = { date: this.size.width > 640, author: this.size.width > 800 };
-    const items = this.more && !this.history ? [...this.commits, "more"] : this.commits;
+    const searching = Boolean(this.query.trim()), deep = searching && this.deepReady();
+    const items = this.more && !this.history && !deep ? [...this.commits, "more"] : this.commits;
     const repo = this.root ? this.root.split("/").pop() : "";
     const header = (text, w) => div().when(w, (e) => e.w(w).flex_none()).when(!w, (e) => e.flex_1().min_w(0)).pr(10).truncate().child(text);
     return v_flex().id("root").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(12)
@@ -838,7 +896,10 @@ export default class GitGraph extends View {
           .on_click((_e, cx) => this.toggleOnly(cx)).child(svg("mods/git-graph/branch.svg").size(13)))
         .when(this.loading, (e) => e.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.dim).spin(900)))
         .child(div().text_size(11).text_color(t.dim).flex_none()
-          .child(this.history ? "" : this.query.trim() ? `${this.commits.length} of ${this.raw.length}${this.more ? "+" : ""}` : `${this.raw.length}${this.more ? "+" : ""} commits`))
+          .child(this.history ? "" : !searching ? `${this.raw.length}${this.more ? "+" : ""} commits`
+            : deep ? `${this.commits.length} of ${this.deep.total}${this.deep.capped ? "+" : ""}`
+            : this.more && this.deep?.loading ? "Searching all history…"
+            : `${this.commits.length} of ${this.raw.length}${this.more ? "+" : ""}`))
         .child(div().id("fetch").h(24).px(7).gap(5).flex().flex_none().items_center().rounded(5).cursor_pointer().text_size(11).text_color(t.dim)
           .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Fetch from every remote")
           .on_click((_e, cx) => this.fetch(cx))
@@ -871,7 +932,8 @@ export default class GitGraph extends View {
         .when(!items.length, (e) => e.child(div().p(14).text_color(t.dim)
           .child(this.error || (this.loading || !this.root || this.history?.loading ? "Loading history…"
             : this.history?.error ? this.history.error
-            : this.query.trim() ? `No ${this.history ? "commit in this history" : "loaded commit"} matches “${this.query.trim()}”`
+            : this.query.trim() && this.more && !this.history && this.deep?.loading ? "Searching all history…"
+            : this.query.trim() ? `No ${this.history ? "commit in this history" : deep || !this.more ? "commit" : "loaded commit"} matches “${this.query.trim()}”`
             : this.history ? "No commits changed this file" : "No commits yet")))))
       .when(Boolean(this.error) && items.length > 0, (e) => e.child(div().px(14).py(4).text_size(11).text_color(t.ansi1).child(this.error)))
       .when(Boolean(this.selected), (e) => e.child(this.details(t)));

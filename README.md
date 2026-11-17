@@ -35,9 +35,10 @@ with beside your agents.
   author and hash, and an "Uncommitted Changes" row on top. Click a commit
   for its message and changed files, and a file for its diff; ↑/↓ move
   through commits. Search narrows the list by message, author, hash or
-  branch, a toggle shows only the current branch, and each branch shows how
+  branch, across the whole history, a toggle shows only the current branch, and each branch shows how
   many commits it has to push and pull (↑2 ↓5). A file's History button
-  lists every commit that changed it, following renames. Right-click a
+  lists every commit that changed it on any branch, following renames (the
+  commit that renamed it shows the rename and what changed). Right-click a
   commit to check it out, branch from it, cherry-pick or revert it, or to
   check out, pull, push, rename or delete a branch on it; Fetch in the header
   updates the remotes. Stashes show as rows on the commit they were made on,
