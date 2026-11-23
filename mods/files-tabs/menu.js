@@ -117,7 +117,7 @@ export function act(m, action) {
     case "relative": copyText(m.relative).then(() => notify({ title: "Relative path copied", body: m.relative, timeout: 2000 })).catch(fail("copy the path")); break;
     case "mkdir": dialog("mkdir", 196); break;
     case "rename": dialog("rename", 196); break;
-    case "trash": dialog("trash", items.length > 1 ? 200 : 176); break;
+    case "trash": dialog("trash", items.length > 1 || m.dir ? 222 : 204); break;
   }
 }
 

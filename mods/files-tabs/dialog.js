@@ -101,11 +101,13 @@ export class DialogView {
         .child(div().text_size(11).text_color(t.dim).child("Esc")))
       .child(div().pt(6).text_size(11.5).text_color(t.dim).truncate().child((d.on ? `${d.on}:` : "") + (mkdir ? d.path : rename || many ? parentOf(d.path) : d.path)))
       .when(rename, el => el.child(div().pt(12).child(Input.new(this.input).h(36).px(10).rounded(9).border_1().border_color(t.accent).bg(t.background).text_size(12.8).text_color(t.foreground))))
-      .when(!rename && many, el => el.child(div().pt(10).text_color(t.muted).child(`${d.paths.map(nameOf).join(", ")}. You can put them back from the Trash.`)))
+      .when(!rename && many, el => el
+        .child(div().pt(10).text_color(t.muted).truncate().child(d.paths.map(nameOf).join(", ")))
+        .child(div().text_color(t.muted).child("You can put them back from the Trash.")))
       .when(!rename && !many, el => el.child(div().pt(10).text_color(t.muted).child(d.dir ? "The folder and everything in it go to the Trash. You can put them back from there." : "You can put it back from the Trash.")))
       .when(Boolean(this.error), el => el.child(div().pt(8).text_size(12).text_color(t.blocked).child(this.error)))
       .child(div().flex_1())
-      .child(h_flex().pt(16).gap(8).justify_end()
+      .child(h_flex().flex_shrink_0().pt(16).gap(8).justify_end()
         .child(button("fd-cancel", "Cancel", false, () => this.close()))
         .child(button("fd-ok", mkdir ? "Create" : rename ? "Rename" : "Move to Trash", true, (_e, cx) => this.confirm(cx))));
   }
